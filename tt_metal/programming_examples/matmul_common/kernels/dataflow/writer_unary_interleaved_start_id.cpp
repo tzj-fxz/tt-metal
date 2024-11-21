@@ -3,8 +3,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #include "dataflow_api.h"
+#include "tools/profiler/kernel_profiler.hpp"
 
 void kernel_main() {
+    DeviceZoneScopedN("TEST-writer_unary_interleaved_start_id");
     uint32_t dst_addr  = get_arg_val<uint32_t>(0);
     uint32_t num_tiles = get_arg_val<uint32_t>(1);
     uint32_t start_id = get_arg_val<uint32_t>(2);

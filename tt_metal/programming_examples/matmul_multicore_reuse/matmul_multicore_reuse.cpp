@@ -12,11 +12,14 @@
 #include "tt_metal/detail/tt_metal.hpp"
 #include "tt_metal/programming_examples/matmul_common/bmm_op.hpp"
 #include "tt_metal/common/tilize_untilize.hpp"
+#include "tt_metal/detail/tt_metal.hpp"
 
 using namespace tt::constants;
 using namespace std;
 using namespace tt;
 using namespace tt::tt_metal;
+
+constexpr uint32_t PROFILING_ITERATIONS = 10;
 
 
 void golden_matmul(std::vector<bfloat16>& a, std::vector<bfloat16>& b, std::vector<bfloat16>& output,
@@ -326,6 +329,14 @@ void matmul_multicore_reuse(std::vector<bfloat16>& a, std::vector<bfloat16>& b, 
     EnqueueWriteBuffer(cq, src0_dram_buffer, a.data(), false);
     EnqueueWriteBuffer(cq, src1_dram_buffer, b.data(), false);
     EnqueueProgram(cq, program, false);
+    Finish(cq);
+    auto start = chrono::high_resolution_clock::now();
+    for (int i = 0; i < PROFILING_ITERATIONS; ++i) {
+        EnqueueProgram(cq, program, false);
+        Finish(cq);
+    }
+    chrono::duration<double> duration = chrono::high_resolution_clock::now() - start;
+    log_info(tt::LogVerif, "Program average time: {} seconds", duration.count() / PROFILING_ITERATIONS);
     EnqueueReadBuffer(cq, dst_dram_buffer, output.data(), true);
 }
 
@@ -353,9 +364,9 @@ int main(int argc, char **argv) {
         // NOTE: Maximum number of tiles in output is 120 * 16^2 = 30,720 (eg. [1, 1, 5120, 6144])
 
         /* Create source data */
-        constexpr uint32_t M = 640;  // user-defined
-        constexpr uint32_t N = 640;  // user-defined
-        constexpr uint32_t K = 640;  // user-defined
+        constexpr uint32_t M = 2048;  // user-defined
+        constexpr uint32_t N = 2048;  // user-defined
+        constexpr uint32_t K = 2048;  // user-defined
         constexpr uint32_t B = 1;  // user-defined
 
         uint32_t Mt = M / TILE_HEIGHT;
@@ -383,6 +394,7 @@ int main(int argc, char **argv) {
         std::vector<bfloat16> result_vec(dram_buffer_C_size/sizeof(bfloat16));
         matmul_multicore_reuse(src0_vec, src1_vec, result_vec, false, M, N, K, B, device);
         untilize(result_vec, M, N);
+        tt_metal::detail::DumpDeviceProfileResults(device);
 
         log_info(tt::LogVerif, "Output vector of size {}", result_vec.size());
 

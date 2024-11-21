@@ -13,11 +13,15 @@
 #include "tt_metal/programming_examples/matmul_common/bmm_op.hpp"
 #include <algorithm>
 #include "tt_metal/common/tilize_untilize.hpp"
+#include "tt_metal/detail/tt_metal.hpp"
+#include <chrono>
 
 using namespace tt::constants;
 using namespace std;
 using namespace tt;
 using namespace tt::tt_metal;
+
+constexpr uint32_t PROFILING_ITERATIONS = 10;
 
 
 void golden_matmul(std::vector<bfloat16>& a, std::vector<bfloat16>& b, std::vector<bfloat16>& output,
@@ -81,10 +85,10 @@ void matmul_multicore_reuse_mcast(std::vector<bfloat16>& a, std::vector<bfloat16
     // NOTE: Only supports matmuls where output is blocks of 16 x 16 tiles (ie. multiples of 16*32 x 16*32)
     // NOTE: Maximum number of tiles in output is 120 * 16^2 = 30,720 (eg. [1, 1, 5120, 6144])2
     uint32_t in0_block_w = 2;
-    //uint32_t out_subblock_h = 4;
-    //uint32_t out_subblock_w = 2;
-    //uint32_t per_core_M = 16;
-    //uint32_t per_core_N = 16;
+    // uint32_t out_subblock_h = 4;
+    // uint32_t out_subblock_w = 2;
+    // uint32_t per_core_M = 16;
+    // uint32_t per_core_N = 16;
 
     // Get large matmul params
     auto matmul_params = bmm_op_utils::get_large_matmul_params(Mt, Nt, num_cores_y, num_cores_x, in0_block_w);
@@ -433,6 +437,14 @@ void matmul_multicore_reuse_mcast(std::vector<bfloat16>& a, std::vector<bfloat16
     EnqueueWriteBuffer(cq, src0_dram_buffer, a.data(), false);
     EnqueueWriteBuffer(cq, src1_dram_buffer, b.data(), false);
     EnqueueProgram(cq, program, false);
+    Finish(cq);
+    auto start = chrono::high_resolution_clock::now();
+    for (int i = 0; i < PROFILING_ITERATIONS; ++i) {
+        EnqueueProgram(cq, program, false);
+        Finish(cq);
+    }
+    chrono::duration<double> duration = chrono::high_resolution_clock::now() - start;
+    log_info(tt::LogVerif, "Program average time: {} seconds", duration.count() / PROFILING_ITERATIONS);
     EnqueueReadBuffer(cq, dst_dram_buffer, output.data(), true);
 }
 
@@ -460,9 +472,9 @@ int main(int argc, char **argv) {
         // NOTE: Maximum number of tiles in output is 120 * 16^2 = 30,720 (eg. [1, 1, 5120, 6144])
 
         /* Create source data */
-        constexpr uint32_t M = 3200;  // user-defined
-        constexpr uint32_t N = 3200;  // user-defined
-        constexpr uint32_t K = 3200;  // user-defined
+        constexpr uint32_t M = 2048;  // user-defined
+        constexpr uint32_t N = 2048;  // user-defined
+        constexpr uint32_t K = 2048;  // user-defined
         constexpr uint32_t B = 1;  // user-defined
 
         uint32_t Mt = M / TILE_HEIGHT;
@@ -492,6 +504,7 @@ int main(int argc, char **argv) {
         untilize(result_vec, M, N);
 
         log_info(tt::LogVerif, "Output vector of size {}", result_vec.size());
+        tt_metal::detail::DumpDeviceProfileResults(device);
 
         float pearson = check_bfloat16_vector_pcc(golden_vec, result_vec);
         log_info(tt::LogVerif, "Metalium vs Golden -- PCC = {}", pearson);

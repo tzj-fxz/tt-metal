@@ -12,6 +12,10 @@
 #include "tt_metal/programming_examples/matmul_common/bmm_op.hpp"
 #include "tt_metal/common/tilize_untilize.hpp"
 #include "tt_metal/impl/device/device.hpp"
+#include "tt_metal/detail/tt_metal.hpp"
+#include <chrono>
+
+constexpr uint32_t PROFILING_ITERATIONS = 10;
 
 using namespace tt::constants;
 using namespace std;
@@ -245,6 +249,14 @@ void matmul_multi_core(std::vector<bfloat16>& a, std::vector<bfloat16>& b, std::
     EnqueueWriteBuffer(cq, src0_dram_buffer, a.data(), false);
     EnqueueWriteBuffer(cq, src1_dram_buffer, b.data(), false);
     EnqueueProgram(cq, program, false);
+    Finish(cq);
+    auto start = chrono::high_resolution_clock::now();
+    for (int i = 0; i < PROFILING_ITERATIONS; ++i) {
+        EnqueueProgram(cq, program, false);
+        Finish(cq);
+    }
+    chrono::duration<double> duration = chrono::high_resolution_clock::now() - start;
+    log_info(tt::LogVerif, "Program average time: {} seconds", duration.count() / PROFILING_ITERATIONS);
     EnqueueReadBuffer(cq, dst_dram_buffer, output.data(), true);
 }
 
@@ -266,9 +278,9 @@ int main(int argc, char **argv) {
         Device *device = CreateDevice(device_id);
 
         /* Create source data */
-        constexpr uint32_t M = 640;  // user-defined
-        constexpr uint32_t N = 640;  // user-defined
-        constexpr uint32_t K = 640;  // user-defined
+        constexpr uint32_t M = 2048;  // user-defined
+        constexpr uint32_t N = 2048;  // user-defined
+        constexpr uint32_t K = 2048;  // user-defined
         constexpr uint32_t B = 1;  // user-defined
 
         uint32_t Mt = M / TILE_HEIGHT;
@@ -295,6 +307,7 @@ int main(int argc, char **argv) {
         /* Calling the MatMul host program. Read in result into a host vector */
         std::vector<bfloat16> result_vec(dram_buffer_C_size/sizeof(bfloat16));
         matmul_multi_core(src0_vec, src1_vec, result_vec, false, M, N, K, B, device);
+        tt_metal::detail::DumpDeviceProfileResults(device);
         untilize(result_vec, M, N);
 
         log_info(tt::LogVerif, "Output vector of size {}", result_vec.size());

@@ -1,7 +1,3 @@
-// SPDX-FileCopyrightText: © 2023 Tenstorrent Inc.
-//
-// SPDX-License-Identifier: Apache-2.0
-
 #include "tt_metal/host_api.hpp"
 #include "tt_metal/common/constants.hpp"
 #include "tt_metal/detail/util.hpp"
@@ -14,10 +10,10 @@
 #include "tt_metal/detail/tt_metal.hpp"
 #include <chrono>
 
-using namespace tt::constants;
 using namespace std;
 using namespace tt;
 using namespace tt::tt_metal;
+using namespace tt::constants;
 
 constexpr uint32_t PROFILING_ITERATIONS = 10;
 
@@ -49,41 +45,50 @@ void golden_matmul(std::vector<bfloat16>& a, std::vector<bfloat16>& b, std::vect
     }
 }
 
-void matmul_single_core(std::vector<bfloat16>& a, std::vector<bfloat16>& b, std::vector<bfloat16>& output, bool bcast_batch,
-                        uint32_t M, uint32_t N, uint32_t K, uint32_t B, Device* device) {
 
-    /*
-    * Setup program to execute along with its buffers and kernels to use
-    * Core range is just single core
-    */
-    CommandQueue& cq = device->command_queue();
-    Program program{};
-    CoreRange core({0, 0}, {0, 0});
+void matmul_cannon(std::vector<bfloat16>& a, std::vector<bfloat16>& b, std::vector<bfloat16>& output,
+                   bool bcast_batch, uint32_t M, uint32_t N, uint32_t K, uint32_t B, Device *device) {
+    CommandQueue &cq = device->command_queue();
+    Program program();
 
-    /*
-    * EXtracting Matrix dimensions from input/output vectors
-    */
-    // C = A*B
-    // MN = MK*KN
-    uint32_t Mt = M / TILE_HEIGHT;
-    uint32_t Kt = K / TILE_WIDTH;
-    uint32_t Nt = N / TILE_WIDTH;
-
-    /*
-    * Create DRAM Buffers for input and output vectors
-    * Writing data from input vectors to source buffers
-    */
     tt::DataFormat cb_data_format = tt::DataFormat::Float16_b;
     MathFidelity math_fidelity = MathFidelity::HiFi4;
-    uint32_t single_tile_size = 2 * 32 * 32;
+    uint32_t tile_size = detail::TileSize(cb_data_format); // bytes
+
+    uint32_t Mt = M / TILE_HEIGHT;
+    uint32_t Nt = N / TILE_WIDTH;
+    uint32_t Kt = K / TILE_WIDTH;
+
+    // the number of tiles processed by one core, can be defined
+    // current only support square, per_core_M = per_core_N = per_core_K
+    uint32_t PER_CORE_M = 16;
+    uint32_t PER_CORE_N = 16;
+    uint32_t PER_CORE_K = 16;
+
+    TT_ASSERT(Mt % PER_CORE_M == 0);
+    TT_ASSERT(Nt % PER_CORE_N == 0);
+
+    uint32_t NUM_BLOCK_M = Mt / PER_CORE_M;
+    uint32_t NUM_BLOCK_N = Nt / PER_CORE_N;
+
+    // dispatch to cores
+    auto compute_with_storage_grid_size = device->compute_with_storage_grid_size();
+    uint32_t max_cores_x = compute_with_storage_grid_size.x;
+    uint32_t max_cores_y = compute_with_storage_grid_size.y;
+    TT_ASSERT(NUM_BLOCK_M * NUM_BLOCK_N <= max_cores_x * max_cores_y);
+    CoreCoord core_range = bmm_op_utils::get_core_range(NUM_BLOCK_M, NUM_BLOCK_N, max_cores_x, max_cores_y);
+
+    uint32_t start_core_x = 0;
+    uint32_t start_core_y = 0;
+    uint32_t num_cores_x = core_range.x;
+    uint32_t num_cores_y = core_range.y;
+    CoreRange all_cores(
+        {(std::size_t)start_core_x, (std::size_t)start_core_y},
+        {(std::size_t)start_core_x + num_cores_x - 1, (std::size_t)start_core_y + num_cores_y - 1});
 
     uint32_t dram_buffer_A_size = single_tile_size * Mt * Kt; // num_tiles of FP16_B, hard-coded in the reader/writer kernels
     uint32_t dram_buffer_B_size = single_tile_size * Nt * Kt; // num_tiles of FP16_B, hard-coded in the reader/writer kernels
     uint32_t dram_buffer_C_size = single_tile_size * Mt * Nt; // num_tiles of FP16_B, hard-coded in the reader/writer kernels
-
-    /* DRAM buffer size = input full size */
-    /* limiting page_size = single tile size; to allow DRAM channels interleaving */
-
     tt_metal::InterleavedBufferConfig dram_config_A{
                     .device= device,
                     .size = dram_buffer_A_size,
@@ -105,34 +110,37 @@ void matmul_single_core(std::vector<bfloat16>& a, std::vector<bfloat16>& b, std:
                     .buffer_type = tt_metal::BufferType::DRAM
         };
 
-    std::shared_ptr<tt::tt_metal::Buffer> src0_dram_buffer = CreateBuffer(dram_config_A);
-    std::shared_ptr<tt::tt_metal::Buffer> src1_dram_buffer = CreateBuffer(dram_config_B);
-    std::shared_ptr<tt::tt_metal::Buffer> dst_dram_buffer = CreateBuffer(dram_config_C);
+    // dram buffer and circular buffer config for each core
+
+    auto src0_dram_buffer = CreateBuffer(dram_config_A);
+    auto src1_dram_buffer = CreateBuffer(dram_config_B);
+    auto dst_dram_buffer = CreateBuffer(dram_config_C);
     uint32_t src0_addr = src0_dram_buffer->address();
     uint32_t src1_addr = src1_dram_buffer->address();
     uint32_t dst_addr = dst_dram_buffer->address();
 
-    /*
-    * Config of Circular Buffer in the device L1
-    * input tiles count is = 2 because it's single tile process, and double-buffer
-    */
     uint32_t src0_cb_index = CB::c_in0; //0
-    uint32_t num_input_tiles = 2;
-    CircularBufferConfig cb_src0_config = CircularBufferConfig(num_input_tiles * single_tile_size, {{src0_cb_index, cb_data_format}})
+    CircularBufferConfig cb_src0_config = CircularBufferConfig(in0_CB_size, {{src0_cb_index, cb_data_format}})
 		.set_page_size(src0_cb_index, single_tile_size);
-    auto cb_src0 = tt_metal::CreateCircularBuffer(program, core, cb_src0_config);
+    auto cb_src0 = tt_metal::CreateCircularBuffer(program, all_cores, cb_src0_config);
 
     uint32_t src1_cb_index = CB::c_in1; // 1
-    CircularBufferConfig cb_src1_config = CircularBufferConfig(num_input_tiles * single_tile_size, {{src1_cb_index, cb_data_format}})
+    CircularBufferConfig cb_src1_config = CircularBufferConfig(in1_CB_size, {{src1_cb_index, cb_data_format}})
 		.set_page_size(src1_cb_index, single_tile_size);
-    auto cb_src1 = tt_metal::CreateCircularBuffer(program, core, cb_src1_config);
+    auto cb_src1 = tt_metal::CreateCircularBuffer(program, all_cores, cb_src1_config);
 
     uint32_t output_cb_index = CB::c_out0; // output operands start at index 16
-    uint32_t num_output_tiles = 2;
-    CircularBufferConfig cb_output_config = CircularBufferConfig(num_output_tiles * single_tile_size, {{output_cb_index, cb_data_format}})
-		.set_page_size(output_cb_index, single_tile_size);
-    auto cb_output = tt_metal::CreateCircularBuffer(program, core, cb_output_config);
+    uint32_t interm0_cb_index = CB::c_intermed0;
+    std::map<uint8_t, tt::DataFormat> output_cb_data_format_spec {
+        {output_cb_index, cb_data_format},
+        {interm0_cb_index, cb_data_format}
+    };
+    CircularBufferConfig cb_output_config = CircularBufferConfig(out_CB_size, output_cb_data_format_spec)
+		.set_page_size(output_cb_index, single_tile_size)
+        .set_page_size(interm0_cb_index, single_tile_size);
+    auto cb_output = tt_metal::CreateCircularBuffer(program, CoreRangeSet({all_cores}), cb_output_config);
 
+    ////////////////////////////
     /*
     * Compile time arguments
     */
@@ -141,72 +149,60 @@ void matmul_single_core(std::vector<bfloat16>& a, std::vector<bfloat16>& b, std:
     std::vector<uint32_t> reader_compile_time_args = {(uint32_t)src0_is_dram, (uint32_t)src1_is_dram};
 
     bool dst_is_dram = dst_dram_buffer->buffer_type() == tt_metal::BufferType::DRAM ? 1 : 0;
+    //std::vector<uint32_t> writer_compile_time_args = {(std::uint32_t) output_cb_index, (uint32_t)dst_is_dram};
     std::vector<uint32_t> writer_compile_time_args = {(uint32_t)dst_is_dram};
 
-    /*
-    * Create Kernels (Reader, Writer, Compute)
-    */
-    auto reader_id = tt_metal::CreateKernel(
+    auto reader_kernel_cannon = tt_metal::CreateKernel(
         program,
-        "tt_metal/programming_examples/matmul_common/kernels/dataflow/reader_bmm_8bank.cpp",
-        core,
-        tt_metal::DataMovementConfig{.processor = DataMovementProcessor::RISCV_1, .noc = NOC::RISCV_1_default, .compile_args = reader_compile_time_args});
-
-    auto writer_id = tt_metal::CreateKernel(
+        "tt_metal/programming_examples/matmul_common/kernels/dataflow/reader_bmm_cannon.cpp",
+        all_cores,
+        tt_metal::DataMovementConfig{.processor = tt_metal::DataMovementProcessor::RISCV_1, .noc = tt_metal::NOC::RISCV_0_default, .compile_args = reader_compile_time_args}
+    );
+    auto writer_kernel_cannon = tt_metal::CreateKernel(
         program,
-        "tt_metal/programming_examples/matmul_common/kernels/dataflow/writer_bmm_8bank.cpp",
-        core,
-        tt_metal::DataMovementConfig{.processor = DataMovementProcessor::RISCV_0, .noc = NOC::RISCV_0_default, .compile_args = writer_compile_time_args});
-
-    std::vector<uint32_t> compute_args = {
-        B, // B
-        Mt, // Mt
-        Kt, // Kt
-        Nt // Nt
-    };
-    auto matmul_single_core_kernel_id = tt_metal::CreateKernel(
+        "tt_metal/programming_examples/matmul_common/kernels/dataflow/writer_bmm_cannon.cpp",
+        all_cores,
+        tt_metal::DataMovementConfig{.processor = tt_metal::DataMovementProcessor::RISCV_0, .noc = tt_metal::NOC::RISCV_1_default, .compile_args = reader_compile_time_args}
+    );
+    // TODO compute kernel args
+    auto compute_kernel_cannon = tt_metal::CreateKernel(
         program,
         "tt_metal/programming_examples/matmul_common/kernels/compute/bmm.cpp",
-        core,
-        tt_metal::ComputeConfig{.math_fidelity = math_fidelity, .compile_args = compute_args}
+        all_cores,
+        tt_metal::ComputeConfig{.math = math_fidelity, .compile_args = compute_kernel_args}
     );
 
-    /*
-    * Kernels - Runtime arguments
-    */
-    tt_metal::SetRuntimeArgs(
-        program, reader_id, core,
-        {src0_addr, src1_addr, Mt, Kt, Nt, Mt*Kt, Kt*Nt, B, uint32_t(bcast_batch ? 1 : 0)}
-    );
-
-    tt_metal::SetRuntimeArgs(
-        program, writer_id, core,
-        {dst_addr, 0, Mt, Kt, Nt, Mt*Kt, Kt*Nt, B}
-    );
-
-    /* Launch program & read in output buffer result into the host vector */
-    EnqueueWriteBuffer(cq, src0_dram_buffer, a.data(), false);
-    EnqueueWriteBuffer(cq, src1_dram_buffer, b.data(), false);
-    EnqueueProgram(cq, program, false);
-    Finish(cq);
-    auto start = chrono::high_resolution_clock::now();
-    for (int i = 0; i < PROFILING_ITERATIONS; ++i) {
-        EnqueueProgram(cq, program, false);
-        Finish(cq);
+    for (uint32_t core_x = start_core_x, core_x < start_core_x + num_cores_x; ++core_x) {
+        for (uint32_t core_y = start_core_y, core_y < start_core_y + num_cores_y; ++core_y) {
+            CoreCoord core = {(std::size_t) core_x, (std::size_t) core_y};
+            std::vector<uint32_t> reader_args = {
+                (std::uint32_t) Mt,
+                (std::uint32_t) Nt,
+                (std::uint32_t) Kt,
+                (std::uint32_t) batch,
+                (std::uint32_t) bcast_B,
+                (std::uint32_t) core_x,
+                (std::uint32_t) core_y,
+                (std::uint32_t) src0_addr,
+                (std::uint32_t) core_x * Kt * PER_CORE_M + core_y * PER_CORE_K,
+                (std::uint32_t) PER_CORE_M * PER_CORE_K,
+                (std::uint32_t) src1_addr,
+                (std::uint32_t) core_x * Nt * PER_CORE_K + core_y * PER_CORE_N,
+                (std::uint32_t) PER_CORE_K * PER_CORE_N
+            };
+            std::vector<uint32_t> writer_args = {
+                (std::uint32_t)
+            };
+        }
     }
-    chrono::duration<double> duration = chrono::high_resolution_clock::now() - start;
-    log_info(tt::LogVerif, "Program average time: {} seconds", duration.count() / PROFILING_ITERATIONS);
-    EnqueueReadBuffer(cq, dst_dram_buffer, output.data(), true);
+
+    return;
 }
-
-
-///////////////////////////////////////
-
 
 
 int main(int argc, char **argv) {
     bool pass = true;
-
+    
     if (getenv("TT_METAL_SLOW_DISPATCH_MODE") != nullptr) {
         TT_THROW("Test not supported w/ slow dispatch, exiting");
     }
@@ -216,10 +212,16 @@ int main(int argc, char **argv) {
         constexpr int device_id = 0;
         Device *device = CreateDevice(device_id);
 
+        ////////////////////////////////////////////////////////////////////////////
+        //                      Matmul Parameters Setup
+        ////////////////////////////////////////////////////////////////////////////
+        // NOTE: Only supports matmuls where output is blocks of 16 x 16 tiles (ie. multiples of 16*32 x 16*32)
+        // NOTE: Maximum number of tiles in output is 120 * 16^2 = 30,720 (eg. [1, 1, 5120, 6144])
+
         /* Create source data */
-        constexpr uint32_t M = 640;  // user-defined
-        constexpr uint32_t N = 640;  // user-defined
-        constexpr uint32_t K = 640;  // user-defined
+        constexpr uint32_t M = 2048;  // user-defined
+        constexpr uint32_t N = 2048;  // user-defined
+        constexpr uint32_t K = 2048;  // user-defined
         constexpr uint32_t B = 1;  // user-defined
 
         uint32_t Mt = M / TILE_HEIGHT;
@@ -231,11 +233,11 @@ int main(int argc, char **argv) {
         uint32_t dram_buffer_B_size = single_tile_size * Nt * Kt; // num_tiles of FP16_B
         uint32_t dram_buffer_C_size = single_tile_size * Mt * Nt; // num_tiles of FP16_B
 
-        /* input vectors with various ranges of values */
+        /* input vectors */
         std::vector<bfloat16> src0_vec = create_random_vector_of_bfloat16_native(dram_buffer_A_size, 1, 123);
         std::vector<bfloat16> src1_vec = create_random_vector_of_bfloat16_native(dram_buffer_B_size, 1, 12522);
 
-         /* Golden Matmul running on CPU (Float)*/
+        /* Golden Matmul running on CPU (Float)*/
         std::vector<bfloat16> golden_vec(M * N, 0);
         golden_matmul(src0_vec, src1_vec, golden_vec, M, N, K, B);
 
@@ -245,7 +247,7 @@ int main(int argc, char **argv) {
 
         /* Calling the MatMul host program. Read in result into a host vector */
         std::vector<bfloat16> result_vec(dram_buffer_C_size/sizeof(bfloat16));
-        matmul_single_core(src0_vec, src1_vec, result_vec, false, M, N, K, B, device);
+        matmul_cannon(src0_vec, src1_vec, result_vec, false, M, N, K, B, device);
         tt_metal::detail::DumpDeviceProfileResults(device);
         untilize(result_vec, M, N);
 
@@ -253,7 +255,7 @@ int main(int argc, char **argv) {
 
         float pearson = check_bfloat16_vector_pcc(golden_vec, result_vec);
         log_info(tt::LogVerif, "Metalium vs Golden -- PCC = {}", pearson);
-        TT_FATAL(pearson > 0.98, "PCC not high enough. Result PCC: {}, Expected PCC: 0.97", pearson);
+        TT_FATAL(pearson > 0.98, "PCC not high enough. Result PCC: {}, Expected PCC: 0.98", pearson);
 
         pass &= CloseDevice(device);
 

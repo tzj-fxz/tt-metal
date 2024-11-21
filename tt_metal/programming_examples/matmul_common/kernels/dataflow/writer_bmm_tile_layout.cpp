@@ -3,9 +3,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #include "dataflow_api.h"
+#include "tools/profiler/kernel_profiler.hpp"
 
 void kernel_main() {
-
+    DeviceZoneScopedN("TEST-writer_bmm_tile_layout");
 
     // out tensor args
     uint32_t out_tensor_addr                         = get_arg_val<uint32_t>(0);

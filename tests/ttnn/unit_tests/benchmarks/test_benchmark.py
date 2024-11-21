@@ -150,7 +150,7 @@ matmul_configs = [
 ]
 
 
-@pytest.mark.skip(reason="WH didt hang, need to skip CI and run locally only")
+# @pytest.mark.skip(reason="WH didt hang, need to skip CI and run locally only")
 @pytest.mark.parametrize("device_params", [{"l1_small_size": 24576, "trace_region_size": 3855488}], indirect=True)
 @pytest.mark.parametrize("grid_size", [(8, 8)])
 @pytest.mark.parametrize("tile_h", [32])

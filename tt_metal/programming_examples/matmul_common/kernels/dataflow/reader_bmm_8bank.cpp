@@ -6,8 +6,11 @@
 #include "dataflow_api.h"
 
 #include "debug/dprint.h"
+#include "tools/profiler/kernel_profiler.hpp"
 
 void kernel_main() {
+    DeviceZoneScopedN("TEST-reader-bmm-8bank");
+
     // same arg indices as in reader_binary_diff_lenghts for compat
     uint32_t src0_addr  = get_arg_val<uint32_t>(0);
     uint32_t src1_addr  = get_arg_val<uint32_t>(1);

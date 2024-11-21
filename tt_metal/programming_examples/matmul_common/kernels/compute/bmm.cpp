@@ -5,6 +5,7 @@
 #include <cstdint>
 #include "compute_kernel_api/tile_move_copy.h"
 #include "compute_kernel_api/matmul.h"
+#include "tools/profiler/kernel_profiler.hpp"
 
 using std::uint32_t;
 
@@ -24,6 +25,7 @@ void MAIN {
     uint32_t Nt = get_compile_time_arg_val(3);
 
     mm_init();
+    DeviceZoneScopedN("TEST-bmm-start");
 
     // the simplest possible version of outer product blocked matmul
     // the reader is expected to read the A's and B's tile rows and tile columns for each output tile
@@ -48,7 +50,6 @@ void MAIN {
 
         release_dst();
     }
-
 
 }
 } // NAMESPACE

@@ -5,8 +5,10 @@
 #include "dataflow_api.h"
 
 //#include "debug/dprint.h"
+#include "tools/profiler/kernel_profiler.hpp"
 
 void kernel_main() {
+    DeviceZoneScopedN("TEST-writer-bmm-8bank");
     // same arg indices as in reader_bmm_8bank for reuse
     uint32_t dst_addr   = get_arg_val<uint32_t>(0);
     uint32_t Mt         = get_arg_val<uint32_t>(2);
