@@ -61,9 +61,9 @@ void matmul_cannon(std::vector<bfloat16>& a, std::vector<bfloat16>& b, std::vect
 
     // the number of tiles processed by one core, can be defined
     // current only support square, per_core_M = per_core_N = per_core_K
-    uint32_t PER_CORE_M = 16;
-    uint32_t PER_CORE_N = 16;
-    uint32_t PER_CORE_K = 16;
+    uint32_t PER_CORE_M = 8;
+    uint32_t PER_CORE_N = 8;
+    uint32_t PER_CORE_K = 8;
 
     TT_ASSERT(Mt % PER_CORE_M == 0);
     TT_ASSERT(Nt % PER_CORE_N == 0);
@@ -165,9 +165,18 @@ void matmul_cannon(std::vector<bfloat16>& a, std::vector<bfloat16>& b, std::vect
         tt_metal::DataMovementConfig{.processor = tt_metal::DataMovementProcessor::RISCV_0, .noc = tt_metal::NOC::RISCV_1_default, .compile_args = reader_compile_time_args}
     );
     // TODO compute kernel args
+    std::vector<uint32_t> compute_args = {
+        (std::uint32_t) Mt,
+        (std::uint32_t) Nt,
+        (std::uint32_t) Kt,
+        (std::uint32_t) batch,
+        (std::uint32_t) per_core_M,
+        (std::uint32_t) per_core_N,
+        (std::uint32_t) per_core_K,
+    };
     auto compute_kernel_cannon = tt_metal::CreateKernel(
         program,
-        "tt_metal/programming_examples/matmul_common/kernels/compute/bmm.cpp",
+        "tt_metal/programming_examples/matmul_common/kernels/compute/bmm_cannon.cpp",
         all_cores,
         tt_metal::ComputeConfig{.math = math_fidelity, .compile_args = compute_kernel_args}
     );
@@ -190,9 +199,15 @@ void matmul_cannon(std::vector<bfloat16>& a, std::vector<bfloat16>& b, std::vect
                 (std::uint32_t) core_x * Nt * PER_CORE_K + core_y * PER_CORE_N,
                 (std::uint32_t) PER_CORE_K * PER_CORE_N
             };
+            tt_metal::SetRuntimeArgs(program, reader_kernel_cannon, core, reader_args);
+
             std::vector<uint32_t> writer_args = {
                 (std::uint32_t)
             };
+            std::vector<uint32_t> compute_args = {
+                (std::uint32_t) core_x,
+                (std::uint32_t) core_y
+            }
         }
     }
 

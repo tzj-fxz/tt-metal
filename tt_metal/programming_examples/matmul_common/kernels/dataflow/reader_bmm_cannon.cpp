@@ -31,8 +31,8 @@ void kernel_main() {
     uint32_t num_block_x = Mt / per_core_M;
     uint32_t num_block_y = Nt / per_core_N;
 
-    constexpr uint32_t cb_id_in0 = 0;
-    constexpr uint32_t cb_id_in1 = 1;
+    constexpr uint32_t cb_id_in0 = tt::CB::c_in0;
+    constexpr uint32_t cb_id_in1 = tt::CB::c_in1;
 
     constexpr uint32_t onetile = 1;
     const uint32_t src0_tile_bytes = get_tile_size(cb_id_in0);
@@ -66,7 +66,7 @@ void kernel_main() {
         uint32_t in0_start_addr = l1_write_addr_in0;
         uint32_t in1_start_addr = l1_write_addr_in1;
         
-        // currently only support square, means per_core_M = per_core_N ( = per_core_K)
+        // currently only support square, means per_core_M = per_core_N (= per_core_K)
         for (uint32_t h = 0; h < per_core_M; ++h) {
             for (uint32_t w = 0; w < per_core_K; ++w) {
                 noc_async_read_tile(src0_start_tile_id + h * Kt + w, s0, l1_write_addr_in0);
@@ -80,6 +80,7 @@ void kernel_main() {
             }
         }
         noc_async_read_barrier();
+        // the address after the initial read to cb
         uint32_t in0_skew_addr = l1_write_addr_in0;
         uint32_t in1_skew_addr = l1_write_addr_in1;
 
@@ -90,17 +91,9 @@ void kernel_main() {
         uint64_t skew_src0_to_addr = get_noc_addr(src0_skew_to_x, src0_skew_to_y, in0_skew_addr);
         uint32_t src0_skew_from_y = (num_block_y + core_y + core_x) % num_block_y;
         if (src0_skew_from_y != src0_skew_to_y) {
-            if (core_y % 2 != 0) {
-                noc_async_write(in0_start_addr, skew_src0_to_addr, src0_tile_bytes * per_core_M * per_core_K);
-                noc_async_write_barrier();
-                // noc_async_read(in0_skew_addr, skew_src0_from_addr, src0_tile_bytes * per_core_M * per_core_K);
-                // noc_async_read_barrier();
-            } else {
-                // noc_async_read(in0_skew_addr, skew_src0_from_addr, src0_tile_bytes * per_core_M * per_core_K);
-                // noc_async_read_barrier();
-                noc_async_write(in0_start_addr, skew_src0_to_addr, src0_tile_bytes * per_core_M * per_core_K);
-                noc_async_write_barrier();
-            }
+            // TODO should change to: first data in dataflow CB, the skewed data to send is in "in" CB
+            noc_async_write(in0_start_addr, skew_src0_to_addr, src0_tile_bytes * per_core_M * per_core_K);
+            noc_async_write_barrier();
         }
         uint32_t src1_skew_to_x = (num_block_x + core_x - core_y) % num_block_x;
         uint32_t src1_skew_to_y = core_y;
@@ -109,17 +102,58 @@ void kernel_main() {
         if (src1_skew_to_x != src1_skew_from_x) {
             noc_async_write(in1_start_addr, skew_src1_to_addr, src1_tile_bytes * per_core_K * per_core_N);
             noc_async_write_barrier();
-        } else {
-            noc_async_write(in1_start_addr, skew_src1_to_addr, src1_tile_bytes * per_core_K * per_core_N);
-            noc_async_write_barrier();
         }
-        // TODO Then push skewed block into CB for compute kernel
-        cb_push_back(cb_id_in0, src0_block_tiles);
-        cb_push_back(cb_id_in1, src1_block_tiles);
+        // Then push original block and skewed block into CB for compute kernel
+        // for compute kernel, should get skewed block
+        cb_push_back(cb_id_in0, src0_block_tiles * 2);
+        cb_push_back(cb_id_in1, src1_block_tiles * 2);
         if (bcast_B == 0) {
             src1_start_tile_id += Kt * Nt;
         }
         src0_start_tile_id += Mt * Kt;
     }
-    
+
+    // in cannon process, read one block from neighbor compute kernel
+    // use dataflow CB buffer, to avoid modify "in" CB in both reader and compute kernel
+    for (uint32_t shift_num = 0; shift_num < Mt / per_core_M - 1; ++shift_num) {
+        constexpr cb_dataflow_0 = tt::CB::dataflow0;
+        constexpr cb_dataflow_1 = tt::CB::dataflow1;
+        // TODO Wrong! other core cannot push tile to current core's CB. Should be semaphore
+        cb_wait_front(cb_dataflow_0, src0_block_tiles);
+        cb_wait_front(cb_dataflow_1, src1_block_tiles);
+
+        // pay attention to the max tile the DST register can hold
+        for (uint32_t block_mk = 0; block_mk < per_core_M * per_core_K; block_mk += 16) {
+            acquire_dst();
+            uint32_t max_reg = per_core_M * per_core_K - block_mk;
+            max_reg = max_reg > 16 ? 16 : max_reg;
+            for (uint32_t reg = 0; reg < max_reg; ++reg) {
+                copy_tile(cb_dataflow_0, block_mk + reg, reg);
+            }
+            cb_reserve_back(cb_id_in0, max_reg);
+            for (uint32_t i = 0; i < max_reg; ++i) {
+                pack_tile(i, cb_id_in0);
+            }
+            cb_push_back(cb_id_in0, max_reg);
+            release_dst();
+        }
+        
+        for (uint32_t block_kn = 0; block_kn < per_core_K * per_core_N; block_kn += 16) {
+            acquire_dst();
+            uint32_t max_reg = per_core_K * per_core_N - block_kn;
+            max_reg = max_reg > 16 ? 16 : max_reg;
+            for (uint32_t reg = 0; reg < max_reg; ++reg) {
+                copy_tile(cb_dataflow_0, block_kn + reg, reg);
+            }
+            cb_reserve_back(cb_id_in1, max_reg);
+            for (uint32_t i = 0; i < max_reg; ++i) {
+                pack_tile(i, cb_id_in1);
+            }
+            cb_push_back(cb_id_in1, max_reg);
+            release_dst();
+        }
+        
+        cb_pop_front(cb_dataflow_0, src0_block_tiles);
+        cb_pop_front(cb_dataflow_1, src1_block_tiles);
+    }
 }
