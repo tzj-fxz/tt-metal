@@ -64,12 +64,16 @@ void matmul_cannon(std::vector<bfloat16>& a, std::vector<bfloat16>& b, std::vect
     uint32_t PER_CORE_M = 8;
     uint32_t PER_CORE_N = 8;
     uint32_t PER_CORE_K = 8;
-
     TT_ASSERT(Mt % PER_CORE_M == 0);
     TT_ASSERT(Nt % PER_CORE_N == 0);
 
     uint32_t NUM_BLOCK_M = Mt / PER_CORE_M;
     uint32_t NUM_BLOCK_N = Nt / PER_CORE_N;
+
+    uint32_t SUBBLOCK_SIZE_H = 2;
+    uint32_t SUBBLOCK_SIZE_W = 2;
+    TT_ASSERT(PER_CORE_M % SUBBLOCK_SIZE_H == 0);
+    TT_ASSERT(PER_CORE_N % SUBBLOCK_SIZE_W == 0);
 
     // dispatch to cores
     auto compute_with_storage_grid_size = device->compute_with_storage_grid_size();
@@ -162,7 +166,7 @@ void matmul_cannon(std::vector<bfloat16>& a, std::vector<bfloat16>& b, std::vect
         program,
         "tt_metal/programming_examples/matmul_common/kernels/dataflow/writer_bmm_cannon.cpp",
         all_cores,
-        tt_metal::DataMovementConfig{.processor = tt_metal::DataMovementProcessor::RISCV_0, .noc = tt_metal::NOC::RISCV_1_default, .compile_args = reader_compile_time_args}
+        tt_metal::DataMovementConfig{.processor = tt_metal::DataMovementProcessor::RISCV_0, .noc = tt_metal::NOC::RISCV_1_default, .compile_args = writer_compile_time_args}
     );
     // TODO compute kernel args
     std::vector<uint32_t> compute_args = {
@@ -170,9 +174,11 @@ void matmul_cannon(std::vector<bfloat16>& a, std::vector<bfloat16>& b, std::vect
         (std::uint32_t) Nt,
         (std::uint32_t) Kt,
         (std::uint32_t) batch,
-        (std::uint32_t) per_core_M,
-        (std::uint32_t) per_core_N,
-        (std::uint32_t) per_core_K,
+        (std::uint32_t) PER_CORE_M,
+        (std::uint32_t) PER_CORE_N,
+        (std::uint32_t) PER_CORE_K,
+        (std::uint32_t) SUBBLOCK_SIZE_H,
+        (std::uint32_t) SUBBLOCK_SIZE_W
     };
     auto compute_kernel_cannon = tt_metal::CreateKernel(
         program,
@@ -197,20 +203,44 @@ void matmul_cannon(std::vector<bfloat16>& a, std::vector<bfloat16>& b, std::vect
                 (std::uint32_t) PER_CORE_M * PER_CORE_K,
                 (std::uint32_t) src1_addr,
                 (std::uint32_t) core_x * Nt * PER_CORE_K + core_y * PER_CORE_N,
-                (std::uint32_t) PER_CORE_K * PER_CORE_N
+                (std::uint32_t) PER_CORE_K * PER_CORE_N,
+                (std::uint32_t) PER_CORE_M,
+                (std::uint32_t) PER_CORE_N,
+                (std::uint32_t) PER_CORE_K
             };
             tt_metal::SetRuntimeArgs(program, reader_kernel_cannon, core, reader_args);
 
             std::vector<uint32_t> writer_args = {
-                (std::uint32_t)
-            };
-            std::vector<uint32_t> compute_args = {
+                (std::uint32_t) Mt,
+                (std::uint32_t) Nt,
+                (std::uint32_t) Kt,
+                (std::uint32_t) batch,
                 (std::uint32_t) core_x,
-                (std::uint32_t) core_y
-            }
+                (std::uint32_t) core_y,
+                (std::uint32_t) PER_CORE_M,
+                (std::uint32_t) PER_CORE_N,
+                (std::uint32_t) PER_CORE_K,
+                (std::uint32_t) SUBBLOCK_SIZE_H,
+                (std::uint32_t) SUBBLOCK_SIZE_W,
+                (std::uint32_t) dst_addr
+            };
+            tt::metal::SetRuntimeArgs(program, writer_kernel_cannon, core, writer_args);
+            
         }
     }
-
+    
+    EnqueueWriteBuffer(cq, src0_dram_buffer, a.data(), false);
+    EnqueueWriteBuffer(cq, src1_dram_buffer, b.data(), false);
+    EnqueueProgram(cq, program, false);
+    Finish(cq);
+    auto start = chrono::high_resolution_clock::now();
+    for (int i = 0; i < PROFILING_ITERATIONS; ++i) {
+        EnqueueProgram(cq, program, false);
+        Finish(cq);
+    }
+    chrono::duration<double> duration = chrono::high_resolution_clock::now() - start;
+    log_info(tt::LogVerif, "Program average time: {} seconds", duration.count() / PROFILING_ITERATIONS);
+    EnqueueReadBuffer(cq, dst_dram_buffer, output.data(), true);
     return;
 }
 

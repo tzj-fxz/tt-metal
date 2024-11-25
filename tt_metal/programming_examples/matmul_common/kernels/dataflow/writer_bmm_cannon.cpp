@@ -6,45 +6,54 @@
 #include "tools/profiler/kernel_profiler.hpp"
 
 void kernel_main() {
-    DeviceZoneScopedN("TEST-writer_unary_interleaved_start_id");
-    uint32_t dst_addr  = get_arg_val<uint32_t>(0);
-    uint32_t num_tiles = get_arg_val<uint32_t>(1);
-    uint32_t start_id = get_arg_val<uint32_t>(2);
+    DeviceZoneScopedN("TEST-writer_bmm_cannon");
 
-    constexpr uint32_t cb_id_out = get_compile_time_arg_val(0);
-    constexpr bool dst_is_dram = get_compile_time_arg_val(1) == 1;
+    // need reorder
+    uint32_t Mt = get_arg_val<uint32_t>(0);
+    uint32_t Nt = get_arg_val<uint32_t>(1);
+    uint32_t Kt = get_arg_val<uint32_t>(2);
+    uint32_t batch = get_arg_val<uint32_t>(3);
+    uint32_t core_x = get_arg_val<uint32_t>(4);
+    uint32_t core_y = get_arg_val<uint32_t>(5);
+    uint32_t per_core_M = get_arg_val<uint32_t>(6);
+    uint32_t per_core_N = get_arg_val<uint32_t>(7);
+    uint32_t per_core_K = get_arg_val<uint32_t>(8);
+    uint32_t subblock_size_h = get_arg_val<uint32_t>(9);
+    uint32_t subblock_size_w = get_arg_val<uint32_t>(10);
+    uint32_t dst_addr = get_arg_val<uint32_t>(11);
+    uint32_t subblock_h = per_core_M / subblock_size_h;
+    uint32_t subblock_w = per_core_N / subblock_size_w;
+    uint32_t subblock_tiles = subblock_size_h * subblock_size_w;
 
-    #ifdef OUT_SHARDED
-    cb_wait_front(cb_id_out, num_tiles);
-    return;
-    #endif
+    constexpr bool out_is_dram = get_compile_time_arg_val(0) == 1;
+    uint32_t output_tiles = per_core_M * per_core_N;
+    uint32_t output_index = core_x * per_core_M * Nt + core_y * per_core_N;
 
-    // single-tile ublocks
-    constexpr uint32_t onetile = 1;
-    const uint32_t tile_bytes = get_tile_size(cb_id_out);
-    const DataFormat data_format = get_dataformat(cb_id_out);
+    // single-tile
+    const uint32_t single_tile_size_bytes = get_tile_size(tt::CB::c_out0);
+    const DataFormat data_format = get_dataformat(tt::CB::c_out0);
 
-    const InterleavedAddrGenFast<dst_is_dram> s = {
+    const InterleavedAddrGenFast<out_is_dram> s = {
         .bank_base_address = dst_addr,
-        .page_size = tile_bytes,
+        .page_size = single_tile_size_bytes,
         .data_format = data_format
     };
 
-    #ifdef BACKWARDS
-    uint32_t end_id = start_id - num_tiles;
-    for (uint32_t i = start_id; i != end_id; -- i) {
-    #else
-    uint32_t end_id = start_id + num_tiles;
-    for (uint32_t i = start_id; i < end_id; ++ i) {
-    #endif
-        cb_wait_front(cb_id_out, onetile);
-        uint32_t l1_read_addr = get_read_ptr(cb_id_out);
-        noc_async_write_tile(i, s, l1_read_addr);
-        noc_async_write_barrier(); // This will wait until the write is done. As an alternative,
-                                   // noc_async_write_flushed() can be faster because it waits
-                                   // until the write request is sent. In that case, you have to
-                                   // use noc_async_write_barrier() at least once at the end of
-                                   // data movement kernel to make sure all writes are done.
-        cb_pop_front(cb_id_out, onetile);
+    for (uint32_t b = 0; b < batch; b++) {
+        for (uint32_t subblock_m = 0; subblock_m < subblock_h; ++subblock_m) {
+            for (uint32_t subblock_n = 0; subblock_n < subblock_w; ++subblock_n) {
+                cb_wait_front(tt::CB::c_out0, subblock_tiles);
+                uint32_t l1_read_addr_out = get_read_ptr(tt::CB::c_out0);
+                uint32_t output_offset = output_index + subblock_m * subblock_size_h * Nt + subblock_n * subblock_size_w;
+                for (uint32_t h = 0; h < subblock_size_h; ++h) {
+                    for (uint32_t w = 0; w < subblock_size_w; ++w) {
+                        noc_async_write_tile(output_offset + h * Nt + w, s, l1_read_addr_out);
+                        l1_read_addr_out += single_tile_size_bytes;
+                    }
+                }
+                noc_async_write_barrier();
+                cb_pop_front(tt::CB::c_out0, subblock_tiles);
+            }
+        }
     }
 }
