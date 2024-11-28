@@ -74,13 +74,13 @@ void kernel_main() {
         for (uint32_t h = 0; h < per_core_M; ++h) {
             for (uint32_t w = 0; w < per_core_K; ++w) {
                 noc_async_read_tile(src0_start_tile_id + h * Kt + w, s0, l1_write_addr_dataflow0);
-                l1_write_addr_in0 += src0_tile_bytes;
+                l1_write_addr_dataflow0 += src0_tile_bytes;
             }
         }
         for (uint32_t h = 0; h < per_core_K; ++h) {
             for (uint32_t w = 0; w < per_core_N; ++w) {
                 noc_async_read_tile(src1_start_tile_id + h * Nt + w, s1, l1_write_addr_dataflow1);
-                l1_write_addr_in1 += src1_tile_bytes;
+                l1_write_addr_dataflow1 += src1_tile_bytes;
             }
         }
         noc_async_read_barrier();
