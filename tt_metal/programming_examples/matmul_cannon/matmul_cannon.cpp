@@ -158,7 +158,7 @@ void matmul_cannon(std::vector<bfloat16>& a, std::vector<bfloat16>& b, std::vect
 
     auto reader_kernel_cannon = tt_metal::CreateKernel(
         program,
-        "tt_metal/programming_examples/matmul_common/kernels/dataflow/reader_bmm_cannon.cpp",
+        "tt_metal/programming_examples/matmul_common/kernels/dataflow/reader_bmm_cannon_semaphore.cpp",
         all_cores,
         tt_metal::DataMovementConfig{.processor = tt_metal::DataMovementProcessor::RISCV_1, .noc = tt_metal::NOC::RISCV_0_default, .compile_args = reader_compile_time_args}
     );
@@ -168,8 +168,7 @@ void matmul_cannon(std::vector<bfloat16>& a, std::vector<bfloat16>& b, std::vect
         all_cores,
         tt_metal::DataMovementConfig{.processor = tt_metal::DataMovementProcessor::RISCV_0, .noc = tt_metal::NOC::RISCV_1_default, .compile_args = writer_compile_time_args}
     );
-    // TODO compute kernel args
-    std::vector<uint32_t> compute_args = {
+    std::vector<uint32_t> compute_compile_time_args = {
         (std::uint32_t) Mt,
         (std::uint32_t) Nt,
         (std::uint32_t) Kt,
@@ -182,10 +181,15 @@ void matmul_cannon(std::vector<bfloat16>& a, std::vector<bfloat16>& b, std::vect
     };
     auto compute_kernel_cannon = tt_metal::CreateKernel(
         program,
-        "tt_metal/programming_examples/matmul_common/kernels/compute/bmm_cannon.cpp",
+        "tt_metal/programming_examples/matmul_common/kernels/compute/bmm_cannon_v2.cpp",
         all_cores,
-        tt_metal::ComputeConfig{.math = math_fidelity, .compile_args = compute_kernel_args}
+        tt_metal::ComputeConfig{.math = math_fidelity, .compile_args = compute_compile_time_args}
     );
+
+    auto in0_sender_semaphore = tt_metal::CreateSemaphore(program, all_cores, 0);
+    auto in0_receiver_semaphore = tt_metal::CreateSemaphore(program, all_cores, 0);
+    auto in1_sender_semaphore = tt_metal::CreateSemaphore(program, all_cores, 0);
+    auto in1_receiver_semaphore = tt_metal::CreateSemaphore(program, all_cores, 0);
 
     for (uint32_t core_x = start_core_x, core_x < start_core_x + num_cores_x; ++core_x) {
         for (uint32_t core_y = start_core_y, core_y < start_core_y + num_cores_y; ++core_y) {
@@ -206,7 +210,11 @@ void matmul_cannon(std::vector<bfloat16>& a, std::vector<bfloat16>& b, std::vect
                 (std::uint32_t) PER_CORE_K * PER_CORE_N,
                 (std::uint32_t) PER_CORE_M,
                 (std::uint32_t) PER_CORE_N,
-                (std::uint32_t) PER_CORE_K
+                (std::uint32_t) PER_CORE_K,
+                (std::uint32_t) in0_sender_semaphore_id,
+                (std::uint32_t) in0_receiver_semaphore_id,
+                (std::uint32_t) in1_sender_semaphore_id,
+                (std::uint32_t) in1_receiver_semaphore_id
             };
             tt_metal::SetRuntimeArgs(program, reader_kernel_cannon, core, reader_args);
 
@@ -226,6 +234,13 @@ void matmul_cannon(std::vector<bfloat16>& a, std::vector<bfloat16>& b, std::vect
             };
             tt::metal::SetRuntimeArgs(program, writer_kernel_cannon, core, writer_args);
             
+            std::vector<uint32_t> compute_args = {
+                (std::uint32_t) core_x,
+                (std::uint32_t) core_y,
+                (std::uint32_t) in0_sender_semaphore_id,
+                (std::uint32_t) in1_sender_semaphore_id
+            };
+            tt::metal::SetRuntimeArgs(program, compute_kernel_cannon, core, compute_args);
         }
     }
     
