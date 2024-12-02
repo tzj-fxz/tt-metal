@@ -132,17 +132,19 @@ void kernel_main() {
         // pay attention to the CB capacity: we first write into CB, then pop from CB, and finally push into CB for compute kernel to process
         uint32_t src0_shift_to_x = core_x;
         uint32_t src0_shift_to_y = (num_block_y + core_y + 1) % num_block_y;
-        uint64_t src0_shift_to_addr_in0 = get_noc_addr(src0_shift_to_x, src0_shift_to_y, in0_start_addr + src0_tile_bytes * per_core_M * per_core_K);
         uint32_t src1_shift_to_x = (num_block_x + core_x + 1) % num_block_x;
         uint32_t src1_shift_to_y = core_y;
-        uint64_t src1_shift_to_addr_in1 = get_noc_addr(src1_shift_to_x, src1_shift_to_y, in1_start_addr + src1_tile_bytes * per_core_K * per_core_N);
         noc_semaphore_set(in0_sender_semaphore_addr_ptr, 1);
         noc_semaphore_set(in1_sender_semaphore_addr_ptr, 1);
 
         for (uint32_t shift_num = 0; shift_num < Mt / per_core_M - 1; ++shift_num) {
+            // l1 address should be updated
+            uint64_t src0_shift_to_addr_in0 = get_noc_addr(src0_shift_to_x, src0_shift_to_y, l1_write_addr_in0);
+            uint64_t src1_shift_to_addr_in1 = get_noc_addr(src1_shift_to_x, src1_shift_to_y, l1_write_addr_in1);
             // First, write data tile to next core's CB
             noc_semaphore_wait(in0_sender_semaphore_addr_ptr, 1);
             noc_async_write(in0_start_addr, src0_shift_to_addr_in0, src0_tile_bytes * per_core_M * per_core_K);
+            l1_write_addr_in0 += src0_tile_bytes * per_core_M * per_core_K;
             noc_async_write_barrier();
             uint64_t receiver_semaphore_noc_addr = get_noc_addr(src0_shift_to_x, src0_shift_to_y, in0_receiver_semaphore_addr);
             noc_semaphore_set_remote(in0_sender_semaphore_addr, receiver_semaphore_noc_addr);
@@ -150,6 +152,7 @@ void kernel_main() {
 
             noc_semaphore_wait(in1_sender_semaphore_addr_ptr, 1);
             noc_async_write(in1_start_addr, src1_shift_to_addr_in1, src1_tile_bytes * per_core_K * per_core_N);
+            l1_write_addr_in1 += src1_tile_bytes * per_core_K * per_core_N;
             noc_async_write_barrier();
             uint64_t receiver_semaphore_noc_addr = get_noc_addr(src1_shift_to_x, src1_shift_to_y, in1_receiver_semaphore_addr);
             noc_semaphore_set_remote(in1_sender_semaphore_addr, receiver_semaphore_noc_addr);
