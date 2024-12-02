@@ -123,6 +123,15 @@ matmul_shapes_bfloat16_square = [
     (16384, 16384, 16384, "ReuseMultiCast", False, False, 4, 8, 8),
 ]
 
+matmul_shapes_bfloat16_cannon = [
+    (512, 512, 512, "Cannon", True, True, 1, 1, 1),
+    (1024, 1024, 1024, "Cannon", True, True, 1, 1, 1),
+    (2048, 2048, 2048, "Cannon", True, True, 1, 1, 1),
+    (4096, 4096, 4096, "Cannon", False, False, 1, 2, 2),
+    (8192, 8192, 8192, "Cannon", False, False, 2, 4, 4),
+    (16384, 16384, 16384, "Cannon", False, False, 4, 8, 8),
+]
+
 matmul_shapes_bfloat8_b = [
     (512, 512, 512, True, True, 1, 1, 1),
     (512, 1024, 1024, True, True, 1, 1, 1),
@@ -232,7 +241,7 @@ def test_matmul_2d_host_perf(
 
         for dtype, math_fidelity, use_trace in matmul_configs_square:
             if dtype == ttnn.bfloat16:
-                matmul_shapes = matmul_shapes_bfloat16_square
+                matmul_shapes = matmul_shapes_bfloat16_square + matmul_shapes_bfloat16_cannon
             else:
                 raise NotImplementedError
             # elif dtype == ttnn.bfloat8_b:
@@ -316,6 +325,16 @@ def test_matmul_2d_host_perf(
                         per_core_N=per_core_N,
                         transpose_mcast=False,
                         fused_activation=None,
+                    )
+                elif strategy == "Cannon":
+                    program_config = ttnn.MatmulMultiCoreReuseCannonProgramConfig(
+                        compute_with_storage_grid_size=grid_size,
+                        out_subblock_h=out_subblock_h,
+                        out_subblock_w=out_subblock_w,
+                        per_core_M=per_core_M,
+                        per_core_N=per_core_N,
+                        # TODO: per_core_K is specified in cannon
+                        per_core_K=per_core_M,
                     )
 
                 if is_grayskull():

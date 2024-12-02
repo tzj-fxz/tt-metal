@@ -77,8 +77,8 @@ void matmul_cannon(std::vector<bfloat16>& a, std::vector<bfloat16>& b, std::vect
 
     // dispatch to cores
     auto compute_with_storage_grid_size = device->compute_with_storage_grid_size();
-    uint32_t max_cores_x = compute_with_storage_grid_size.x;
-    uint32_t max_cores_y = compute_with_storage_grid_size.y;
+    uint32_t max_cores_x = compute_with_storage_grid_size.x < compute_with_storage_grid_size.y ? compute_with_storage_grid_size.x : compute_with_storage_grid_size.y;
+    uint32_t max_cores_y = compute_with_storage_grid_size.y < compute_with_storage_grid_size.x ? compute_with_storage_grid_size.y : compute_with_storage_grid_size.x;
     TT_ASSERT(NUM_BLOCK_M * NUM_BLOCK_N <= max_cores_x * max_cores_y);
     CoreCoord core_range = bmm_op_utils::get_core_range(NUM_BLOCK_M, NUM_BLOCK_N, max_cores_x, max_cores_y);
 

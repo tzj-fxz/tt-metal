@@ -1339,6 +1339,15 @@ void Matmul::validate(
                     program_config.out_subblock_h,
                     available_reg_count);
             }
+            if constexpr (std::is_same_v<ProgramConfigType, MatmulMultiCoreCannonProgramConfig>) {
+                TT_FATAL(program_config.per_core_M == program_config.per_core_N && program_config.per_core_K == program_config.per_core_M, "Currently only support square subblock");
+                TT_FATAL(program_config.per_core_M % program_config.out_subblock_h == 0, "per_core_M must be divisible by out_subblock_h");
+                TT_FATAL(program_config.per_core_N % program_config.out_subblock_w == 0, "per_core_N must be divisible by out_subblock_w");
+                uint32_t Mt = input_tensor_a.get_legacy_shape()[-2] / in0_tile_shape[0];
+                uint32_t Nt = input_tensor_b.get_legacy_shape()[-1] / in1_tile_shape[1];
+                TT_FATAL(Mt % program_config.per_core_M == 0, "Tile M must be divisible by per_core_M");
+                TT_FATAL(Nt % program_config.per_core_N == 0, "Tile N must be divisible by per_core_N");
+            }
         },
         chosen_program_config);
 }
@@ -1517,6 +1526,7 @@ std::vector<Tensor> Matmul::create_output_tensors(const std::vector<Tensor>& inp
             chosen_program_config);
     }
 
+    // a bit confused... cannon now goto generic_create_output_tensors
     return operation::generic_create_output_tensors(
         *this, input_tensors, this->output_dtype.value(), Layout::TILE, this->output_mem_config, output_tile);
 }
@@ -1625,6 +1635,20 @@ operation::ProgramWithCallbacks Matmul::create_program(
             } else if constexpr (std::is_same_v<ProgramConfigType, MatmulMultiCoreProgramConfig>) {
                 TT_FATAL(!bias.has_value(), "Bias is not supported for matmul multi core");
                 return matmul_multi_core(input_tensor_a, input_tensor_b, output_tensor, broadcast_batch);
+            } else if constexpr (std::is_same_v<ProgramConfigType, MatmulMultiCoreCannonProgramConfig>) {
+                TT_FATAL(!bias.has_value(), "Bias is currently not supported for matmul multi core cannon");
+                return matmul_multi_core_cannon(
+                    input_tensor_a,
+                    input_tensor_b,
+                    output_tensor,
+                    broadcast_batch,
+                    program_config.compute_with_storage_grid_size,
+                    this->compute_kernel_config.value(),
+                    program_config.per_core_M,
+                    program_config.per_core_N,
+                    program_config.per_core_K,
+                    program_config.out_subblock_h,
+                    program_config.out_subblock_w);
             } else {
                 TT_THROW("Unrecognized Config");
             }

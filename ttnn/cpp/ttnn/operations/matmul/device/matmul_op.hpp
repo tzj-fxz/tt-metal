@@ -31,6 +31,19 @@ operation::ProgramWithCallbacks matmul_multi_core_reuse(
     const Tensor &input_tensor_a, const Tensor &input_tensor_b, Tensor &output_tensor, bool bcast_batch);
 operation::ProgramWithCallbacks matmul_multi_core_reuse_mcast(
     const Tensor &input_tensor_a, const Tensor &input_tensor_b, Tensor &output_tensor, bool bcast_batch);
+operation::ProgramWithCallbacks matmul_multi_core_cannon(
+    const Tensor &input_tensor_a,
+    const Tensor &input_tensor_b,
+    Tensor &output_tensor,
+    bool bcast_batch,
+    CoreCoord compute_with_storage_grid_size,
+    tt::tt_metal::DataType output_dtype,
+    DeviceComputeKernelConfig compute_kernel_config,
+    uint32_t per_core_M,
+    uint32_t per_core_N,
+    uint32_t per_core_K,
+    uint32_t out_subblock_h,
+    uint32_t out_subblock_w);
 
 operation::ProgramWithCallbacks matmul_multi_core_reuse_mcast_1d_optimized(
     const Tensor &input_tensor_a,
@@ -147,13 +160,23 @@ struct MatmulMultiCoreProgramConfig {};
 
 struct MatmulMultiCoreNonOptimizedReuseProgramConfig {};
 
+struct MatmulMultiCoreCannonProgramConfig {
+    CoreCoord compute_with_storage_grid_size;
+    std::size_t out_subblock_h;
+    std::size_t out_subblock_w;
+    std::size_t per_core_M;
+    std::size_t per_core_N;
+    std::size_t per_core_K;
+};
+
 using MatmulProgramConfig = std::variant<
     MatmulMultiCoreProgramConfig,
     MatmulMultiCoreNonOptimizedReuseProgramConfig,
     MatmulMultiCoreReuseProgramConfig,
     MatmulMultiCoreReuseMultiCastProgramConfig,
     MatmulMultiCoreReuseMultiCast1DProgramConfig,
-    MatmulMultiCoreReuseMultiCastDRAMShardedProgramConfig>;
+    MatmulMultiCoreReuseMultiCastDRAMShardedProgramConfig,
+    MatmulMultiCoreCannonProgramConfig>;
 
 struct Matmul {
     const std::optional<const MatmulProgramConfig> program_config = std::nullopt;
