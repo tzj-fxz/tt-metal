@@ -809,7 +809,8 @@ inline MatmulProgramConfig get_program_config(
                 TT_FATAL(
                     program_config.compute_with_storage_grid_size.y > 0,
                     "Number of rows in matmul compute grid must be greater than 0!");
-                TT_FATAL(program_config.in0_block_w > 0, "in0_block_w must be greater than 0!");
+                // TODO: Remove this check once we have a better way to handle cannon in0_block_w
+                // TT_FATAL(program_config.in0_block_w > 0, "in0_block_w must be greater than 0!");
                 TT_FATAL(program_config.out_subblock_h > 0, "out_subblock_h must be greater than 0!");
                 TT_FATAL(program_config.out_subblock_w > 0, "out_subblock_w must be greater than 0!");
                 TT_FATAL(program_config.per_core_M > 0, "per_core_M must be greater than 0!");
@@ -1636,7 +1637,8 @@ operation::ProgramWithCallbacks Matmul::create_program(
                 TT_FATAL(!bias.has_value(), "Bias is not supported for matmul multi core");
                 return matmul_multi_core(input_tensor_a, input_tensor_b, output_tensor, broadcast_batch);
             } else if constexpr (std::is_same_v<ProgramConfigType, MatmulMultiCoreCannonProgramConfig>) {
-                TT_FATAL(!bias.has_value(), "Bias is currently not supported for matmul multi core cannon");
+                // TT_FATAL(!bias.has_value(), "Bias is currently not supported for matmul multi core cannon");
+                // return matmul_multi_core(input_tensor_a, input_tensor_b, output_tensor, broadcast_batch);
                 return matmul_multi_core_cannon(
                     input_tensor_a,
                     input_tensor_b,

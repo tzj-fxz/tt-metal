@@ -36,14 +36,23 @@ operation::ProgramWithCallbacks create_program_cannon(
     uint32_t out_subblock_w,
     uint32_t per_core_M,
     uint32_t per_core_N,
+    uint32_t per_core_K,
     tt_metal::Buffer *in0_buffer,
     tt_metal::Buffer *in1_buffer,
     tt_metal::Buffer *output_buffer
 ) {
     CommandQueue &cq = device->command_queue();
-    tt_metal::Program program();
+    tt_metal::Program program{};
 
-    uint32_t tile_size = detail::TileSize(cb_data_format); // bytes
+    tt::DataFormat cb_data_format = tt::DataFormat::Float16_b;
+    uint32_t single_tile_size = tt_metal::detail::TileSize(cb_data_format); // bytes
+
+    uint32_t in0_CB_tiles = per_core_M * per_core_K;
+    uint32_t in1_CB_tiles = per_core_N * per_core_K;
+    uint32_t out_CB_tiles = per_core_M * per_core_N;
+    uint32_t in0_CB_size = in0_CB_tiles * single_tile_size * 2; // double buffer
+    uint32_t in1_CB_size = in1_CB_tiles * single_tile_size * 2; // double buffer
+    uint32_t out_CB_size = out_CB_tiles * single_tile_size * 2; // double buffer
 
     // dispatch to cores
     uint32_t start_core_x = 0;
@@ -82,7 +91,7 @@ operation::ProgramWithCallbacks create_program_cannon(
     bool src1_is_dram = in1_buffer->buffer_type() == tt_metal::BufferType::DRAM ? 1 : 0;
     std::vector<uint32_t> reader_compile_time_args = {(uint32_t)src0_is_dram, (uint32_t)src1_is_dram};
 
-    bool dst_is_dram = out_buffer->buffer_type() == tt_metal::BufferType::DRAM ? 1 : 0;
+    bool dst_is_dram = output_buffer->buffer_type() == tt_metal::BufferType::DRAM ? 1 : 0;
     std::vector<uint32_t> writer_compile_time_args = {(uint32_t)dst_is_dram};
 
     auto reader_kernel_cannon = tt_metal::CreateKernel(
@@ -112,23 +121,23 @@ operation::ProgramWithCallbacks create_program_cannon(
         program,
         "ttnn/cpp/ttnn/operations/matmul/device/kernels/compute/bmm_cannon_v2.cpp",
         all_cores,
-        tt_metal::ComputeConfig{.math = math_fidelity, .compile_args = compute_compile_time_args}
+        tt_metal::ComputeConfig{.math_fidelity = math_fidelity, .compile_args = compute_compile_time_args}
     );
 
-    auto in0_sender_semaphore = tt_metal::CreateSemaphore(program, all_cores, 0);
-    auto in0_receiver_semaphore = tt_metal::CreateSemaphore(program, all_cores, 0);
-    auto in1_sender_semaphore = tt_metal::CreateSemaphore(program, all_cores, 0);
-    auto in1_receiver_semaphore = tt_metal::CreateSemaphore(program, all_cores, 0);
+    auto in0_sender_semaphore_id = tt_metal::CreateSemaphore(program, all_cores, 0);
+    auto in0_receiver_semaphore_id = tt_metal::CreateSemaphore(program, all_cores, 0);
+    auto in1_sender_semaphore_id = tt_metal::CreateSemaphore(program, all_cores, 0);
+    auto in1_receiver_semaphore_id = tt_metal::CreateSemaphore(program, all_cores, 0);
 
-    for (uint32_t core_x = start_core_x, core_x < start_core_x + num_cores_x; ++core_x) {
-        for (uint32_t core_y = start_core_y, core_y < start_core_y + num_cores_y; ++core_y) {
+    for (uint32_t core_x = start_core_x; core_x < start_core_x + num_cores_x; ++core_x) {
+        for (uint32_t core_y = start_core_y; core_y < start_core_y + num_cores_y; ++core_y) {
             CoreCoord core = {(std::size_t) core_x, (std::size_t) core_y};
             std::vector<uint32_t> reader_args = {
                 (std::uint32_t) Mt,
                 (std::uint32_t) Nt,
                 (std::uint32_t) Kt,
-                (std::uint32_t) batch,
-                (std::uint32_t) bcast_B,
+                (std::uint32_t) B,
+                (std::uint32_t) bcast_batch,
                 (std::uint32_t) core_x,
                 (std::uint32_t) core_y,
                 (std::uint32_t) in0_buffer->address(),
@@ -151,7 +160,7 @@ operation::ProgramWithCallbacks create_program_cannon(
                 (std::uint32_t) Mt,
                 (std::uint32_t) Nt,
                 (std::uint32_t) Kt,
-                (std::uint32_t) batch,
+                (std::uint32_t) B,
                 (std::uint32_t) core_x,
                 (std::uint32_t) core_y,
                 (std::uint32_t) per_core_M,
@@ -161,7 +170,7 @@ operation::ProgramWithCallbacks create_program_cannon(
                 (std::uint32_t) out_subblock_w,
                 (std::uint32_t) output_buffer->address()
             };
-            tt::metal::SetRuntimeArgs(program, writer_kernel_cannon, core, writer_args);
+            tt::tt_metal::SetRuntimeArgs(program, writer_kernel_cannon, core, writer_args);
             
             std::vector<uint32_t> compute_args = {
                 (std::uint32_t) core_x,
@@ -169,7 +178,7 @@ operation::ProgramWithCallbacks create_program_cannon(
                 (std::uint32_t) in0_sender_semaphore_id,
                 (std::uint32_t) in1_sender_semaphore_id
             };
-            tt::metal::SetRuntimeArgs(program, compute_kernel_cannon, core, compute_args);
+            tt::tt_metal::SetRuntimeArgs(program, compute_kernel_cannon, core, compute_args);
         }
     }
 
@@ -210,7 +219,7 @@ operation::ProgramWithCallbacks matmul_multi_core_cannon(
     Tensor &output_tensor,
     bool bcast_batch,
     CoreCoord compute_with_storage_grid_size,
-    tt::tt_metal::DataType output_dtype,
+    // tt::tt_metal::DataType output_dtype,
     DeviceComputeKernelConfig compute_kernel_config,
     uint32_t per_core_M,
     uint32_t per_core_N,
@@ -244,14 +253,15 @@ operation::ProgramWithCallbacks matmul_multi_core_cannon(
     TT_FATAL(Mt == Nt, "Currently only supports square matrices");
 
     tt_metal::Device *device = input_tensor_a.device();
-    auto compute_with_storage_grid_size = device->compute_with_storage_grid_size();
+    // auto compute_with_storage_grid_size = device->compute_with_storage_grid_size();
     uint32_t num_cores_x = compute_with_storage_grid_size.x < compute_with_storage_grid_size.y ? compute_with_storage_grid_size.x : compute_with_storage_grid_size.y;
     uint32_t num_cores_y = compute_with_storage_grid_size.y < compute_with_storage_grid_size.x ? compute_with_storage_grid_size.y : compute_with_storage_grid_size.x;
 
     uint32_t num_blocks_total = (Mt / per_core_M) * (Nt / per_core_N);
     TT_FATAL(num_blocks_total <= num_cores_x * num_cores_y, "Error");
 
-    CoreCoord core_range = bmm_op_utils::get_core_range(Mt / per_core_M, Nt / per_core_N, num_cores_x, num_cores_y);
+    // CoreRangeSet all_cores(num_cores_to_corerangeset(
+    //     num_blocks_x * num_blocks_y, device->compute_with_storage_grid_size(), true));
 
     return create_program_cannon(
         device,
@@ -270,6 +280,7 @@ operation::ProgramWithCallbacks matmul_multi_core_cannon(
         out_subblock_w,
         per_core_M,
         per_core_N,
+        per_core_K,
         in0_buffer,
         in1_buffer,
         output_buffer

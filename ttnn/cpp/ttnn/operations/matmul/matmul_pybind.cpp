@@ -170,13 +170,13 @@ void py_module(py::module& module) {
         .def_readwrite("per_core_N", &MatmulMultiCoreReuseMultiCastDRAMShardedProgramConfig::per_core_N)
         .def_readwrite("fused_activation", &MatmulMultiCoreReuseMultiCastDRAMShardedProgramConfig::fused_activation);
 
-    auto matmul_multi_core_reuse_cannon_program_config =
-        tt_serializable_class<MatmulMultiCoreReuseCannonProgramConfig>(
-            module, "MatmulMultiCoreReuseCannonProgramConfig", R"doc(
+    auto matmul_multi_core_cannon_program_config =
+        tt_serializable_class<MatmulMultiCoreCannonProgramConfig>(
+            module, "MatmulMultiCoreCannonProgramConfig", R"doc(
         Class defining matmul multi core reuse cannon program config
     )doc");
 
-    matmul_multi_core_reuse_cannon_program_config
+    matmul_multi_core_cannon_program_config
         .def(
             py::init<CoreCoord, std::size_t, std::size_t, std::size_t, std::size_t, std::size_t>(),
             py::kw_only(),
@@ -186,12 +186,12 @@ void py_module(py::module& module) {
             py::arg("per_core_M").noconvert(),
             py::arg("per_core_N").noconvert(),
             py::arg("per_core_K").noconvert())
-        .def_readwrite("compute_with_storage_grid_size", &MatmulMultiCoreReuseCannonProgramConfig::compute_with_storage_grid_size)
-        .def_readwrite("out_subblock_h", &MatmulMultiCoreReuseCannonProgramConfig::out_subblock_h)
-        .def_readwrite("out_subblock_w", &MatmulMultiCoreReuseCannonProgramConfig::out_subblock_w)
-        .def_readwrite("per_core_M", &MatmulMultiCoreReuseCannonProgramConfig::per_core_M)
-        .def_readwrite("per_core_N", &MatmulMultiCoreReuseCannonProgramConfig::per_core_N)
-        .def_readwrite("per_core_K", &MatmulMultiCoreReuseCannonProgramConfig::per_core_K);
+        .def_readwrite("compute_with_storage_grid_size", &MatmulMultiCoreCannonProgramConfig::compute_with_storage_grid_size)
+        .def_readwrite("out_subblock_h", &MatmulMultiCoreCannonProgramConfig::out_subblock_h)
+        .def_readwrite("out_subblock_w", &MatmulMultiCoreCannonProgramConfig::out_subblock_w)
+        .def_readwrite("per_core_M", &MatmulMultiCoreCannonProgramConfig::per_core_M)
+        .def_readwrite("per_core_N", &MatmulMultiCoreCannonProgramConfig::per_core_N)
+        .def_readwrite("per_core_K", &MatmulMultiCoreCannonProgramConfig::per_core_K);
 
     bind_registered_operation(
         module,

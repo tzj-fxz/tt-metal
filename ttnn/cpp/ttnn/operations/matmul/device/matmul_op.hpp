@@ -37,7 +37,6 @@ operation::ProgramWithCallbacks matmul_multi_core_cannon(
     Tensor &output_tensor,
     bool bcast_batch,
     CoreCoord compute_with_storage_grid_size,
-    tt::tt_metal::DataType output_dtype,
     DeviceComputeKernelConfig compute_kernel_config,
     uint32_t per_core_M,
     uint32_t per_core_N,

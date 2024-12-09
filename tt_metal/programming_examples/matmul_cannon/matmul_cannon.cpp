@@ -49,7 +49,7 @@ void golden_matmul(std::vector<bfloat16>& a, std::vector<bfloat16>& b, std::vect
 void matmul_cannon(std::vector<bfloat16>& a, std::vector<bfloat16>& b, std::vector<bfloat16>& output,
                    bool bcast_batch, uint32_t M, uint32_t N, uint32_t K, uint32_t B, Device *device) {
     CommandQueue &cq = device->command_queue();
-    Program program();
+    Program program{};
 
     tt::DataFormat cb_data_format = tt::DataFormat::Float16_b;
     MathFidelity math_fidelity = MathFidelity::HiFi4;
@@ -66,6 +66,12 @@ void matmul_cannon(std::vector<bfloat16>& a, std::vector<bfloat16>& b, std::vect
     uint32_t PER_CORE_K = 8;
     TT_ASSERT(Mt % PER_CORE_M == 0);
     TT_ASSERT(Nt % PER_CORE_N == 0);
+    uint32_t in0_CB_tiles = PER_CORE_M * PER_CORE_K;
+    uint32_t in1_CB_tiles = PER_CORE_N * PER_CORE_K;
+    uint32_t out_CB_tiles = PER_CORE_M * PER_CORE_N;
+    uint32_t in0_CB_size = in0_CB_tiles * single_tile_size * 2; // double buffer
+    uint32_t in1_CB_size = in1_CB_tiles * single_tile_size * 2; // double buffer
+    uint32_t out_CB_size = out_CB_tiles * single_tile_size * 2; // double buffer
 
     uint32_t NUM_BLOCK_M = Mt / PER_CORE_M;
     uint32_t NUM_BLOCK_N = Nt / PER_CORE_N;
@@ -90,6 +96,7 @@ void matmul_cannon(std::vector<bfloat16>& a, std::vector<bfloat16>& b, std::vect
         {(std::size_t)start_core_x, (std::size_t)start_core_y},
         {(std::size_t)start_core_x + num_cores_x - 1, (std::size_t)start_core_y + num_cores_y - 1});
 
+    constexpr uint32_t single_tile_size = 2 * 1024;
     uint32_t dram_buffer_A_size = single_tile_size * Mt * Kt; // num_tiles of FP16_B, hard-coded in the reader/writer kernels
     uint32_t dram_buffer_B_size = single_tile_size * Nt * Kt; // num_tiles of FP16_B, hard-coded in the reader/writer kernels
     uint32_t dram_buffer_C_size = single_tile_size * Mt * Nt; // num_tiles of FP16_B, hard-coded in the reader/writer kernels
@@ -183,16 +190,16 @@ void matmul_cannon(std::vector<bfloat16>& a, std::vector<bfloat16>& b, std::vect
         program,
         "tt_metal/programming_examples/matmul_common/kernels/compute/bmm_cannon_v2.cpp",
         all_cores,
-        tt_metal::ComputeConfig{.math = math_fidelity, .compile_args = compute_compile_time_args}
+        tt_metal::ComputeConfig{.math_fidelity = math_fidelity, .compile_args = compute_compile_time_args}
     );
 
-    auto in0_sender_semaphore = tt_metal::CreateSemaphore(program, all_cores, 0);
-    auto in0_receiver_semaphore = tt_metal::CreateSemaphore(program, all_cores, 0);
-    auto in1_sender_semaphore = tt_metal::CreateSemaphore(program, all_cores, 0);
-    auto in1_receiver_semaphore = tt_metal::CreateSemaphore(program, all_cores, 0);
+    auto in0_sender_semaphore_id = tt_metal::CreateSemaphore(program, all_cores, 0);
+    auto in0_receiver_semaphore_id = tt_metal::CreateSemaphore(program, all_cores, 0);
+    auto in1_sender_semaphore_id = tt_metal::CreateSemaphore(program, all_cores, 0);
+    auto in1_receiver_semaphore_id = tt_metal::CreateSemaphore(program, all_cores, 0);
 
-    for (uint32_t core_x = start_core_x, core_x < start_core_x + num_cores_x; ++core_x) {
-        for (uint32_t core_y = start_core_y, core_y < start_core_y + num_cores_y; ++core_y) {
+    for (uint32_t core_x = start_core_x; core_x < start_core_x + num_cores_x; ++core_x) {
+        for (uint32_t core_y = start_core_y; core_y < start_core_y + num_cores_y; ++core_y) {
             CoreCoord core = {(std::size_t) core_x, (std::size_t) core_y};
             std::vector<uint32_t> reader_args = {
                 (std::uint32_t) Mt,
@@ -232,7 +239,7 @@ void matmul_cannon(std::vector<bfloat16>& a, std::vector<bfloat16>& b, std::vect
                 (std::uint32_t) SUBBLOCK_SIZE_W,
                 (std::uint32_t) dst_addr
             };
-            tt::metal::SetRuntimeArgs(program, writer_kernel_cannon, core, writer_args);
+            tt::tt_metal::SetRuntimeArgs(program, writer_kernel_cannon, core, writer_args);
             
             std::vector<uint32_t> compute_args = {
                 (std::uint32_t) core_x,
@@ -240,7 +247,7 @@ void matmul_cannon(std::vector<bfloat16>& a, std::vector<bfloat16>& b, std::vect
                 (std::uint32_t) in0_sender_semaphore_id,
                 (std::uint32_t) in1_sender_semaphore_id
             };
-            tt::metal::SetRuntimeArgs(program, compute_kernel_cannon, core, compute_args);
+            tt::tt_metal::SetRuntimeArgs(program, compute_kernel_cannon, core, compute_args);
         }
     }
     
