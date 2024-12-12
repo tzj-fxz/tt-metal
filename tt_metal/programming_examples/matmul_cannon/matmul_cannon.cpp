@@ -15,7 +15,7 @@ using namespace tt;
 using namespace tt::tt_metal;
 using namespace tt::constants;
 
-constexpr uint32_t PROFILING_ITERATIONS = 1;
+constexpr uint32_t PROFILING_ITERATIONS = 0;
 
 
 void golden_matmul(std::vector<bfloat16>& a, std::vector<bfloat16>& b, std::vector<bfloat16>& output,
@@ -203,9 +203,14 @@ void matmul_cannon(std::vector<bfloat16>& a, std::vector<bfloat16>& b, std::vect
             CoreCoord core = {(std::size_t) core_x, (std::size_t) core_y};
             CoreCoord src0_next_core = {(std::size_t) core_x, (std::size_t) (core_y + num_cores_y + 1) % num_cores_y};
             CoreCoord src1_next_core = {(std::size_t) (core_x + num_cores_x + 1) % num_cores_x, (std::size_t) core_y};
+            CoreCoord src0_prev_core = {(std::size_t) core_x, (std::size_t) (core_y + num_cores_y - 1) % num_cores_y};
+            CoreCoord src1_prev_core = {(std::size_t) (core_x + num_cores_x - 1) % num_cores_x, (std::size_t) core_y};
 
+            auto core_physical = device->worker_core_from_logical_core(core);
             auto src0_next_core_physical = device->worker_core_from_logical_core(src0_next_core);
             auto src1_next_core_physical = device->worker_core_from_logical_core(src1_next_core);
+            auto src0_prev_core_physical = device->worker_core_from_logical_core(src0_prev_core);
+            auto src1_prev_core_physical = device->worker_core_from_logical_core(src1_prev_core);
 
             std::vector<uint32_t> reader_args = {
                 (std::uint32_t) Mt,
@@ -231,7 +236,11 @@ void matmul_cannon(std::vector<bfloat16>& a, std::vector<bfloat16>& b, std::vect
                 (std::uint32_t) src0_next_core_physical.x,
                 (std::uint32_t) src0_next_core_physical.y,
                 (std::uint32_t) src1_next_core_physical.x,
-                (std::uint32_t) src1_next_core_physical.y
+                (std::uint32_t) src1_next_core_physical.y,
+                (std::uint32_t) src0_prev_core_physical.x,
+                (std::uint32_t) src0_prev_core_physical.y,
+                (std::uint32_t) src1_prev_core_physical.x,
+                (std::uint32_t) src1_prev_core_physical.y
             };
             tt_metal::SetRuntimeArgs(program, reader_kernel_cannon, core, reader_args);
 
@@ -261,18 +270,23 @@ void matmul_cannon(std::vector<bfloat16>& a, std::vector<bfloat16>& b, std::vect
         }
     }
     
+    log_info(tt::LogVerif, " -- Metalium Core Command Queue --");
     EnqueueWriteBuffer(cq, src0_dram_buffer, a.data(), false);
     EnqueueWriteBuffer(cq, src1_dram_buffer, b.data(), false);
     EnqueueProgram(cq, program, false);
-    Finish(cq);
-    auto start = chrono::high_resolution_clock::now();
-    for (int i = 0; i < PROFILING_ITERATIONS; ++i) {
-        EnqueueProgram(cq, program, false);
-        Finish(cq);
-    }
-    chrono::duration<double> duration = chrono::high_resolution_clock::now() - start;
-    log_info(tt::LogVerif, "Program average time: {} seconds", duration.count() / PROFILING_ITERATIONS);
     EnqueueReadBuffer(cq, dst_dram_buffer, output.data(), true);
+    Finish(cq);
+    // auto start = chrono::high_resolution_clock::now();
+    // for (int i = 0; i < PROFILING_ITERATIONS; ++i) {
+    //     EnqueueWriteBuffer(cq, src0_dram_buffer, a.data(), false);
+    //     EnqueueWriteBuffer(cq, src1_dram_buffer, b.data(), false);
+    //     EnqueueProgram(cq, program, false);
+    //     // Finish(cq);
+    //     EnqueueReadBuffer(cq, dst_dram_buffer, output.data(), true);
+    // }
+    // chrono::duration<double> duration = chrono::high_resolution_clock::now() - start;
+    // log_info(tt::LogVerif, "Program average time: {} seconds", duration.count() / PROFILING_ITERATIONS);
+    // EnqueueReadBuffer(cq, dst_dram_buffer, output.data(), true);
     return;
 }
 
@@ -296,9 +310,9 @@ int main(int argc, char **argv) {
         // NOTE: Maximum number of tiles in output is 120 * 16^2 = 30,720 (eg. [1, 1, 5120, 6144])
 
         /* Create source data */
-        constexpr uint32_t M = 8 * TILE_HEIGHT * 2;  // user-defined
-        constexpr uint32_t N = 8 * TILE_WIDTH * 2;  // user-defined
-        constexpr uint32_t K = 8 * TILE_WIDTH * 2;  // user-defined
+        constexpr uint32_t M = 8 * TILE_HEIGHT * 4;  // user-defined
+        constexpr uint32_t N = 8 * TILE_WIDTH * 4;  // user-defined
+        constexpr uint32_t K = 8 * TILE_WIDTH * 4;  // user-defined
         constexpr uint32_t B = 1;  // user-defined
 
         uint32_t Mt = M / TILE_HEIGHT;
@@ -344,7 +358,7 @@ int main(int argc, char **argv) {
     }
 
     if (pass) {
-        tt::log_info(tt::LogTest, "Test Passed");
+        tt::log_info(tt::LogTest, "Run Passed");
     } else {
         TT_THROW("Test Failed");
     }

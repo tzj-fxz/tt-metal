@@ -51,12 +51,12 @@ void MAIN {
     for (uint32_t nb = 0; nb < batch; ++nb) {
         // each shift should do a matmul which contains many subblock matmul
         // TODO currently assume num_block_x == num_block_y
+        bool spill = num_block_x > 0;
         bool enable_reload = false;
         for (uint32_t shift_num = 0; shift_num < num_block_x; ++shift_num) {
             cb_wait_front(tt::CB::c_in0, in0_num_tiles);
             cb_wait_front(tt::CB::c_in1, in1_num_tiles);
-            DPRINT << "bmm cannon start " << shift_num << ENDL();
-            bool spill = num_block_x > 0;
+            // DPRINT << "bmm cannon start " << shift_num << ENDL();
             bool last_out = shift_num == (num_block_x - 1);
             for (uint32_t subblock_m = 0; subblock_m < subblock_h; ++subblock_m) {
                 for (uint32_t subblock_n = 0; subblock_n < subblock_w; ++subblock_n) {
@@ -90,6 +90,7 @@ void MAIN {
                     }
                     
                     if (last_out) {
+                        // DPRINT << "last out: use c_out0" << ENDL();
                         cb_reserve_back(tt::CB::c_out0, subblock_tiles);
                         for (uint32_t i = 0; i < subblock_tiles; ++i) {
                             pack_tile(i, tt::CB::c_out0);
@@ -109,7 +110,7 @@ void MAIN {
             if (spill) {
                 enable_reload = true;
             }
-            DPRINT << "bmm cannon pop " << shift_num << ENDL();
+            // DPRINT << "bmm cannon pop " << shift_num << ENDL();
             cb_pop_front(tt::CB::c_in0, in0_num_tiles);
             cb_pop_front(tt::CB::c_in1, in1_num_tiles);
             // after compute, signal reader kernel to send data at the front of "in" CB
