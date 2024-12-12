@@ -4,11 +4,11 @@
 
 #include "dataflow_api.h"
 #include "tools/profiler/kernel_profiler.hpp"
+#include "debug/dprint.h"
 
 void kernel_main() {
     DeviceZoneScopedN("TEST-writer_bmm_cannon");
 
-    // need reorder
     uint32_t Mt = get_arg_val<uint32_t>(0);
     uint32_t Nt = get_arg_val<uint32_t>(1);
     uint32_t Kt = get_arg_val<uint32_t>(2);
@@ -42,7 +42,9 @@ void kernel_main() {
     for (uint32_t b = 0; b < batch; b++) {
         for (uint32_t subblock_m = 0; subblock_m < subblock_h; ++subblock_m) {
             for (uint32_t subblock_n = 0; subblock_n < subblock_w; ++subblock_n) {
+                DPRINT << "writer ready" << ENDL();
                 cb_wait_front(tt::CB::c_out0, subblock_tiles);
+                DPRINT << "writer begin" << ENDL();
                 uint32_t l1_read_addr_out = get_read_ptr(tt::CB::c_out0);
                 uint32_t output_offset = output_index + subblock_m * subblock_size_h * Nt + subblock_n * subblock_size_w;
                 for (uint32_t h = 0; h < subblock_size_h; ++h) {

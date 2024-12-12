@@ -7,15 +7,15 @@ from typing import Optional, Tuple
 
 import ttnn
 
-
 MatmulProgramConfig = ttnn._ttnn.operations.matmul.MatmulProgramConfig
+MatmulMultiCoreNonOptimizedReuseProgramConfig = ttnn._ttnn.operations.matmul.MatmulMultiCoreNonOptimizedReuseProgramConfig
 MatmulMultiCoreReuseProgramConfig = ttnn._ttnn.operations.matmul.MatmulMultiCoreReuseProgramConfig
 MatmulMultiCoreReuseMultiCastProgramConfig = ttnn._ttnn.operations.matmul.MatmulMultiCoreReuseMultiCastProgramConfig
 MatmulMultiCoreReuseMultiCast1DProgramConfig = ttnn._ttnn.operations.matmul.MatmulMultiCoreReuseMultiCast1DProgramConfig
 MatmulMultiCoreReuseMultiCastDRAMShardedProgramConfig = (
     ttnn._ttnn.operations.matmul.MatmulMultiCoreReuseMultiCastDRAMShardedProgramConfig
 )
-
+MatmulMultiCoreCannonProgramConfig = ttnn._ttnn.operations.matmul.MatmulMultiCoreCannonProgramConfig
 
 def _golden_function(input_tensor_a, input_tensor_b, *args, **kwargs):
     import torch

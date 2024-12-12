@@ -24,6 +24,14 @@ void py_module(py::module& module) {
         Class defining matmul program config
     )doc");
 
+    auto matmul_multi_core_non_optimized_reuse_program_config =
+        tt_serializable_class<MatmulMultiCoreNonOptimizedReuseProgramConfig>(module, "MatmulMultiCoreNonOptimizedReuseProgramConfig", R"doc(
+        Class defining matmul multi core non-optimized reuse program config
+    )doc");
+
+    matmul_multi_core_non_optimized_reuse_program_config
+        .def(py::init<>());
+
     auto matmul_multi_core_reuse_program_config =
         tt_serializable_class<MatmulMultiCoreReuseProgramConfig>(module, "MatmulMultiCoreReuseProgramConfig", R"doc(
         Class defining matmul multi core reuse program config
