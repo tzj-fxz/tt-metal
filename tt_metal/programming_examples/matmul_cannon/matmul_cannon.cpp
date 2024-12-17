@@ -16,6 +16,11 @@ using namespace tt::tt_metal;
 using namespace tt::constants;
 
 constexpr uint32_t PROFILING_ITERATIONS = 0;
+constexpr uint32_t PER_CORE_M = 4;
+constexpr uint32_t PER_CORE_N = 4;
+constexpr uint32_t PER_CORE_K = 4;
+constexpr uint32_t CORE_NUM_X = 4;
+constexpr uint32_t CORE_NUM_Y = 4;
 
 
 void golden_matmul(std::vector<bfloat16>& a, std::vector<bfloat16>& b, std::vector<bfloat16>& output,
@@ -60,9 +65,6 @@ void matmul_cannon(std::vector<bfloat16>& a, std::vector<bfloat16>& b, std::vect
 
     // the number of tiles processed by one core, can be defined
     // current only support square, per_core_M = per_core_N = per_core_K
-    uint32_t PER_CORE_M = 8;
-    uint32_t PER_CORE_N = 8;
-    uint32_t PER_CORE_K = 8;
     TT_ASSERT(Mt % PER_CORE_M == 0);
     TT_ASSERT(Nt % PER_CORE_N == 0);
     uint32_t in0_CB_tiles = PER_CORE_M * PER_CORE_K;
@@ -310,9 +312,9 @@ int main(int argc, char **argv) {
         // NOTE: Maximum number of tiles in output is 120 * 16^2 = 30,720 (eg. [1, 1, 5120, 6144])
 
         /* Create source data */
-        constexpr uint32_t M = 8 * TILE_HEIGHT * 4;  // user-defined
-        constexpr uint32_t N = 8 * TILE_WIDTH * 4;  // user-defined
-        constexpr uint32_t K = 8 * TILE_WIDTH * 4;  // user-defined
+        constexpr uint32_t M = PER_CORE_M * TILE_HEIGHT * CORE_NUM_X;  // user-defined
+        constexpr uint32_t N = PER_CORE_N * TILE_WIDTH * CORE_NUM_Y;  // user-defined
+        constexpr uint32_t K = PER_CORE_K * TILE_WIDTH * CORE_NUM_Y;  // user-defined
         constexpr uint32_t B = 1;  // user-defined
 
         uint32_t Mt = M / TILE_HEIGHT;
