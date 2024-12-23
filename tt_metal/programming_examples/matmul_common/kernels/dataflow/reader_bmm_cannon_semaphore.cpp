@@ -170,49 +170,48 @@ void kernel_main() {
             // First, wait for all semaphore to be set, then write data tile to next core's CB
 
             uint64_t in0_sender_semaphore_noc_addr = get_noc_addr(src0_prev_core_physical_x, src0_prev_core_physical_y, in0_sender_semaphore_addr);
+            uint64_t in1_sender_semaphore_noc_addr = get_noc_addr(src1_prev_core_physical_x, src1_prev_core_physical_y, in1_sender_semaphore_addr);
             // DPRINT << "Signal (" << src0_prev_core_physical_x << ", " << src0_prev_core_physical_y << ") to send data" << ENDL();
             noc_semaphore_inc(in0_sender_semaphore_noc_addr, 1);
+            noc_semaphore_inc(in1_sender_semaphore_noc_addr, 1);
             // DPRINT << "Wait for signal from (" << src0_next_core_physical_x << ", " << src0_next_core_physical_y << ") to send data" << ENDL();
             noc_semaphore_wait(in0_sender_semaphore_addr_ptr, 1);
             // DPRINT << "Get signal from (" << src0_next_core_physical_x << ", " << src0_next_core_physical_y << ") to send data" << ENDL();
             noc_semaphore_set(in0_sender_semaphore_addr_ptr, 0);
-            // DPRINT << "Send data" << ENDL();
-            // DPRINT << "Current in0_start_addr=" << in0_start_addr << "; l1_write_addr_in0=" << l1_write_addr_in0 << "; The difference=" << l1_write_addr_in0 - in0_start_addr << ENDL();
+            noc_semaphore_wait(in1_sender_semaphore_addr_ptr, 1);
+            noc_semaphore_set(in1_sender_semaphore_addr_ptr, 0);
             noc_async_write(in0_start_addr, src0_shift_to_addr_in0, src0_tile_bytes * per_core_M * per_core_K);
             in0_start_addr = l1_write_addr_in0;
             l1_write_addr_in0 += src0_tile_bytes * per_core_M * per_core_K;
+            // DPRINT << "Send data" << ENDL();
+            // DPRINT << "Current in0_start_addr=" << in0_start_addr << "; l1_write_addr_in0=" << l1_write_addr_in0 << "; The difference=" << l1_write_addr_in0 - in0_start_addr << ENDL();
+            noc_async_write(in1_start_addr, src1_shift_to_addr_in1, src1_tile_bytes * per_core_K * per_core_N);
+            in1_start_addr = l1_write_addr_in1;
+            l1_write_addr_in1 += src1_tile_bytes * per_core_K * per_core_N;
             noc_async_write_barrier();
             uint64_t in0_receiver_semaphore_noc_addr = get_noc_addr(src0_next_core_physical_x, src0_next_core_physical_y, in0_receiver_semaphore_addr);
+            uint64_t in1_receiver_semaphore_noc_addr = get_noc_addr(src1_next_core_physical_x, src1_next_core_physical_y, in1_receiver_semaphore_addr);
             // DPRINT << "Signal (" << src0_next_core_physical_x << ", " << src0_next_core_physical_y << ") to receive data" << ENDL();
             noc_semaphore_inc(in0_receiver_semaphore_noc_addr, 1);
+            noc_semaphore_inc(in1_receiver_semaphore_noc_addr, 1);
             // DPRINT << "Wait for signal from (" << src0_prev_core_physical_x << ", " << src0_prev_core_physical_y << ") to receive data" << ENDL();
             noc_semaphore_wait(in0_receiver_semaphore_addr_ptr, 1);
             // DPRINT << "Get signal from (" << src0_prev_core_physical_x << ", " << src0_prev_core_physical_y << ") to receive data" << ENDL();
             noc_semaphore_set(in0_receiver_semaphore_addr_ptr, 0);
-            // DPRINT << "Receive data" << ENDL();
-            // DPRINT << TSLICE(tt::CB::c_in0, (shift_num+1)*(per_core_M*per_core_K), SliceRange::hw0_32_16(), TSLICE_INPUT_CB, TSLICE_RD_PTR, true, false) << ENDL();
-            cb_push_back(tt::CB::c_in0, src0_block_tiles);
-
-            uint64_t in1_sender_semaphore_noc_addr = get_noc_addr(src1_prev_core_physical_x, src1_prev_core_physical_y, in1_sender_semaphore_addr);
-            // DPRINT << "Signal prev core (" << src1_prev_core_physical_x << ", " << src1_prev_core_physical_y << ") to send data" << ENDL();
-            noc_semaphore_inc(in1_sender_semaphore_noc_addr, 1);
-            // DPRINT << "Wait for signal to send data" << ENDL();
-            noc_semaphore_wait(in1_sender_semaphore_addr_ptr, 1);
-            noc_semaphore_set(in1_sender_semaphore_addr_ptr, 0);
-            noc_async_write(in1_start_addr, src1_shift_to_addr_in1, src1_tile_bytes * per_core_K * per_core_N);
-            in1_start_addr = l1_write_addr_in1;
-            l1_write_addr_in1 += src1_tile_bytes * per_core_K * per_core_N;
-            // DPRINT << "Current in1_start_addr=" << in1_start_addr << "; l1_write_addr_in1=" << l1_write_addr_in1 << "; The difference=" << l1_write_addr_in1 - in1_start_addr << ENDL();
-            noc_async_write_barrier();
-            uint64_t in1_receiver_semaphore_noc_addr = get_noc_addr(src1_next_core_physical_x, src1_next_core_physical_y, in1_receiver_semaphore_addr);
-            // DPRINT << "Signal next core (" << src1_next_core_physical_x << ", " << src1_next_core_physical_y << ") to receive data" << ENDL();
-            noc_semaphore_inc(in1_receiver_semaphore_noc_addr, 1);
-            // DPRINT << "Wait for signal to receive data" << ENDL();
             noc_semaphore_wait(in1_receiver_semaphore_addr_ptr, 1);
             noc_semaphore_set(in1_receiver_semaphore_addr_ptr, 0);
             // DPRINT << "Receive data" << ENDL();
-            // DPRINT << TSLICE(tt::CB::c_in1, (shift_num+1)*(per_core_K*per_core_N), SliceRange::hw0_32_16(), TSLICE_INPUT_CB, TSLICE_RD_PTR, true, false) << ENDL();
+            // DPRINT << TSLICE(tt::CB::c_in0, (shift_num+1)*(per_core_M*per_core_K), SliceRange::hw0_32_16(), TSLICE_INPUT_CB, TSLICE_RD_PTR, true, false) << ENDL();
+            cb_push_back(tt::CB::c_in0, src0_block_tiles);
             cb_push_back(tt::CB::c_in1, src1_block_tiles);
+
+            // DPRINT << "Signal prev core (" << src1_prev_core_physical_x << ", " << src1_prev_core_physical_y << ") to send data" << ENDL();
+            // DPRINT << "Wait for signal to send data" << ENDL();
+            // DPRINT << "Current in1_start_addr=" << in1_start_addr << "; l1_write_addr_in1=" << l1_write_addr_in1 << "; The difference=" << l1_write_addr_in1 - in1_start_addr << ENDL();
+            // DPRINT << "Signal next core (" << src1_next_core_physical_x << ", " << src1_next_core_physical_y << ") to receive data" << ENDL();
+            // DPRINT << "Wait for signal to receive data" << ENDL();
+            // DPRINT << "Receive data" << ENDL();
+            // DPRINT << TSLICE(tt::CB::c_in1, (shift_num+1)*(per_core_K*per_core_N), SliceRange::hw0_32_16(), TSLICE_INPUT_CB, TSLICE_RD_PTR, true, false) << ENDL();
 
 
             // uint64_t in0_receiver_semaphore_noc_addr = get_noc_addr(src0_next_core_physical_x, src0_next_core_physical_y, in0_receiver_semaphore_addr);
