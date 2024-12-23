@@ -90,7 +90,6 @@ void kernel_main() {
         l1_write_addr_in1 = get_write_ptr(tt::CB::c_in1);
         uint32_t in0_start_addr = l1_write_addr_in0;
         uint32_t in1_start_addr = l1_write_addr_in1;
-        
         // currently only support square, means per_core_M = per_core_N (= per_core_K)
         // now, we manually skew src_start_tile_id to let reader kernel read the correct initial block.
         src0_start_tile_id = core_x * Kt * per_core_M + ((core_y + core_x) % num_block_y) * per_core_K;
@@ -110,6 +109,8 @@ void kernel_main() {
         noc_async_read_barrier();
         cb_push_back(tt::CB::c_in0, src0_block_tiles);
         cb_push_back(tt::CB::c_in1, src1_block_tiles);
+        DPRINT << TSLICE(tt::CB::c_in0, 0, SliceRange::hw0_32_16(), TSLICE_INPUT_CB, TSLICE_RD_PTR, true, false) << ENDL();
+        DPRINT << TSLICE(tt::CB::c_in1, 0, SliceRange::hw0_32_16(), TSLICE_INPUT_CB, TSLICE_RD_PTR, true, false) << ENDL();
 
         // the address of truly skewed tiles in "in" CB
         // cb_reserve_back(tt::CB::c_in0, src0_block_tiles);
@@ -160,6 +161,8 @@ void kernel_main() {
             DeviceZoneScopedN("TEST-reader_bmm_cannon_shift");
             cb_reserve_back(tt::CB::c_in0, src0_block_tiles);
             cb_reserve_back(tt::CB::c_in1, src1_block_tiles);
+            l1_write_addr_in0 = get_write_ptr(tt::CB::c_in0);
+            l1_write_addr_in1 = get_write_ptr(tt::CB::c_in1);
             // l1 address should be updated
             uint64_t src0_shift_to_addr_in0 = get_noc_addr(src0_next_core_physical_x, src0_next_core_physical_y, l1_write_addr_in0);
             uint64_t src1_shift_to_addr_in1 = get_noc_addr(src1_next_core_physical_x, src1_next_core_physical_y, l1_write_addr_in1);
@@ -174,8 +177,9 @@ void kernel_main() {
             // DPRINT << "Get signal from (" << src0_next_core_physical_x << ", " << src0_next_core_physical_y << ") to send data" << ENDL();
             noc_semaphore_set(in0_sender_semaphore_addr_ptr, 0);
             // DPRINT << "Send data" << ENDL();
+            // DPRINT << "Current in0_start_addr=" << in0_start_addr << "; l1_write_addr_in0=" << l1_write_addr_in0 << "; The difference=" << l1_write_addr_in0 - in0_start_addr << ENDL();
             noc_async_write(in0_start_addr, src0_shift_to_addr_in0, src0_tile_bytes * per_core_M * per_core_K);
-            in0_start_addr += src0_tile_bytes * per_core_M * per_core_K;
+            in0_start_addr = l1_write_addr_in0;
             l1_write_addr_in0 += src0_tile_bytes * per_core_M * per_core_K;
             noc_async_write_barrier();
             uint64_t in0_receiver_semaphore_noc_addr = get_noc_addr(src0_next_core_physical_x, src0_next_core_physical_y, in0_receiver_semaphore_addr);
@@ -186,6 +190,7 @@ void kernel_main() {
             // DPRINT << "Get signal from (" << src0_prev_core_physical_x << ", " << src0_prev_core_physical_y << ") to receive data" << ENDL();
             noc_semaphore_set(in0_receiver_semaphore_addr_ptr, 0);
             // DPRINT << "Receive data" << ENDL();
+            // DPRINT << TSLICE(tt::CB::c_in0, (shift_num+1)*(per_core_M*per_core_K), SliceRange::hw0_32_16(), TSLICE_INPUT_CB, TSLICE_RD_PTR, true, false) << ENDL();
             cb_push_back(tt::CB::c_in0, src0_block_tiles);
 
             uint64_t in1_sender_semaphore_noc_addr = get_noc_addr(src1_prev_core_physical_x, src1_prev_core_physical_y, in1_sender_semaphore_addr);
@@ -194,9 +199,10 @@ void kernel_main() {
             // DPRINT << "Wait for signal to send data" << ENDL();
             noc_semaphore_wait(in1_sender_semaphore_addr_ptr, 1);
             noc_semaphore_set(in1_sender_semaphore_addr_ptr, 0);
-            noc_async_write(in1_start_addr, src1_shift_to_addr_in1, src1_tile_bytes * per_core_M * per_core_K);
-            in1_start_addr += src1_tile_bytes * per_core_K * per_core_N;
+            noc_async_write(in1_start_addr, src1_shift_to_addr_in1, src1_tile_bytes * per_core_K * per_core_N);
+            in1_start_addr = l1_write_addr_in1;
             l1_write_addr_in1 += src1_tile_bytes * per_core_K * per_core_N;
+            // DPRINT << "Current in1_start_addr=" << in1_start_addr << "; l1_write_addr_in1=" << l1_write_addr_in1 << "; The difference=" << l1_write_addr_in1 - in1_start_addr << ENDL();
             noc_async_write_barrier();
             uint64_t in1_receiver_semaphore_noc_addr = get_noc_addr(src1_next_core_physical_x, src1_next_core_physical_y, in1_receiver_semaphore_addr);
             // DPRINT << "Signal next core (" << src1_next_core_physical_x << ", " << src1_next_core_physical_y << ") to receive data" << ENDL();
@@ -205,6 +211,7 @@ void kernel_main() {
             noc_semaphore_wait(in1_receiver_semaphore_addr_ptr, 1);
             noc_semaphore_set(in1_receiver_semaphore_addr_ptr, 0);
             // DPRINT << "Receive data" << ENDL();
+            // DPRINT << TSLICE(tt::CB::c_in1, (shift_num+1)*(per_core_K*per_core_N), SliceRange::hw0_32_16(), TSLICE_INPUT_CB, TSLICE_RD_PTR, true, false) << ENDL();
             cb_push_back(tt::CB::c_in1, src1_block_tiles);
 
 

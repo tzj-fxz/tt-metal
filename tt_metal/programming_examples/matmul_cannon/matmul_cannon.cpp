@@ -16,9 +16,9 @@ using namespace tt::tt_metal;
 using namespace tt::constants;
 
 constexpr uint32_t PROFILING_ITERATIONS = 0;
-constexpr uint32_t PER_CORE_M = 4;
-constexpr uint32_t PER_CORE_N = 4;
-constexpr uint32_t PER_CORE_K = 4;
+constexpr uint32_t PER_CORE_M = 8;
+constexpr uint32_t PER_CORE_N = 8;
+constexpr uint32_t PER_CORE_K = 8;
 constexpr uint32_t CORE_NUM_X = 4;
 constexpr uint32_t CORE_NUM_Y = 4;
 
@@ -101,7 +101,11 @@ void matmul_cannon(std::vector<bfloat16>& a, std::vector<bfloat16>& b, std::vect
     uint32_t in0_CB_size = in0_CB_tiles * single_tile_size * 2; // double buffer
     uint32_t in1_CB_size = in1_CB_tiles * single_tile_size * 2; // double buffer
     uint32_t out_CB_size = out_CB_tiles * single_tile_size * 2; // double buffer
+    // uint32_t in0_CB_size = in0_CB_tiles * single_tile_size * CORE_NUM_X;
+    // uint32_t in1_CB_size = in1_CB_tiles * single_tile_size * CORE_NUM_Y;
+    // uint32_t out_CB_size = out_CB_tiles * single_tile_size * CORE_NUM_Y;
 
+    // dram buffer and circular buffer config for each core
     tt_metal::InterleavedBufferConfig dram_config_A{
                     .device= device,
                     .size = dram_buffer_A_size,
@@ -123,8 +127,6 @@ void matmul_cannon(std::vector<bfloat16>& a, std::vector<bfloat16>& b, std::vect
                     .buffer_type = tt_metal::BufferType::DRAM
         };
 
-    // dram buffer and circular buffer config for each core
-
     auto src0_dram_buffer = CreateBuffer(dram_config_A);
     auto src1_dram_buffer = CreateBuffer(dram_config_B);
     auto dst_dram_buffer = CreateBuffer(dram_config_C);
@@ -132,7 +134,7 @@ void matmul_cannon(std::vector<bfloat16>& a, std::vector<bfloat16>& b, std::vect
     uint32_t src1_addr = src1_dram_buffer->address();
     uint32_t dst_addr = dst_dram_buffer->address();
 
-    uint32_t src0_cb_index = CB::c_in0; //0
+    uint32_t src0_cb_index = CB::c_in0; // 0
     CircularBufferConfig cb_src0_config = CircularBufferConfig(in0_CB_size, {{src0_cb_index, cb_data_format}})
 		.set_page_size(src0_cb_index, single_tile_size);
     auto cb_src0 = tt_metal::CreateCircularBuffer(program, all_cores, cb_src0_config);
@@ -348,7 +350,7 @@ int main(int argc, char **argv) {
 
         float pearson = check_bfloat16_vector_pcc(golden_vec, result_vec);
         log_info(tt::LogVerif, "Metalium vs Golden -- PCC = {}", pearson);
-        // TT_FATAL(pearson > 0.98, "PCC not high enough. Result PCC: {}, Expected PCC: 0.98", pearson);
+        TT_FATAL(pearson > 0.95, "PCC not high enough. Result PCC: {}, Expected PCC: 0.95", pearson);
 
         pass &= CloseDevice(device);
 
@@ -360,7 +362,7 @@ int main(int argc, char **argv) {
     }
 
     if (pass) {
-        tt::log_info(tt::LogTest, "Run Passed");
+        tt::log_info(tt::LogTest, "Test Passed");
     } else {
         TT_THROW("Test Failed");
     }
