@@ -24,8 +24,8 @@ void MAIN {
     uint32_t per_core_K = get_compile_time_arg_val(6);
     uint32_t subblock_size_h = get_compile_time_arg_val(7); // for each subblock matrix
     uint32_t subblock_size_w = get_compile_time_arg_val(8); // for each subblock matrix
-    uint32_t subblock_h = per_core_M / subblock_size_h;
-    uint32_t subblock_w = per_core_N / subblock_size_w;
+    uint32_t subblock_h = per_core_M / subblock_size_h; // in0_num_subblock
+    uint32_t subblock_w = per_core_N / subblock_size_w; // in1_num_subblock
     uint32_t subblock_tiles = subblock_size_h * subblock_size_w;
 
     uint32_t num_block_x = Mt / per_core_M;
@@ -57,7 +57,7 @@ void MAIN {
             cb_wait_front(tt::CB::c_in0, in0_num_tiles);
             cb_wait_front(tt::CB::c_in1, in1_num_tiles);
             // DPRINT << "bmm cannon start " << shift_num << ENDL();
-            bool last_out = shift_num == (num_block_x - 1);
+            bool last_out = (shift_num == (num_block_x - 1));
             for (uint32_t subblock_m = 0; subblock_m < subblock_h; ++subblock_m) {
                 for (uint32_t subblock_n = 0; subblock_n < subblock_w; ++subblock_n) {
                     acquire_dst();
@@ -74,7 +74,7 @@ void MAIN {
                     }
 
                     int dst_index = 0;
-                    int in0_subblock_offset = subblock_m * per_core_K;
+                    int in0_subblock_offset = subblock_m * per_core_K * subblock_size_h;
                     int in1_subblock_offset = subblock_n * subblock_size_w;
 
                     for (uint32_t h = 0; h < subblock_size_h; ++h) {
