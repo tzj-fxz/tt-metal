@@ -11,6 +11,7 @@ set(PROGRAMMING_EXAMPLES_SRCS
     ${CMAKE_CURRENT_SOURCE_DIR}/matmul_multicore_reuse/matmul_multicore_reuse.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/matmul_multicore_reuse_mcast/matmul_multicore_reuse_mcast.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/matmul_single_core/matmul_single_core.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/matmul_single_core_test/matmul_single_core_test.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/matmul_cannon/matmul_cannon.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/pad/pad_multi_core.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/sharding/shard_data_rm.cpp
