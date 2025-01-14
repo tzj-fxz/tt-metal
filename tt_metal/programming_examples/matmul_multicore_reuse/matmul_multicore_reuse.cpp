@@ -19,7 +19,7 @@ using namespace std;
 using namespace tt;
 using namespace tt::tt_metal;
 
-constexpr uint32_t PROFILING_ITERATIONS = 10;
+constexpr uint32_t PROFILING_ITERATIONS = 1;
 
 
 void golden_matmul(std::vector<bfloat16>& a, std::vector<bfloat16>& b, std::vector<bfloat16>& output,

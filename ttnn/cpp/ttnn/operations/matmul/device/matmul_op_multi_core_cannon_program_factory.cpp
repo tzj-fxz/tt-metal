@@ -54,15 +54,16 @@ operation::ProgramWithCallbacks create_program_cannon(
     uint32_t in1_CB_size = in1_CB_tiles * single_tile_size * 2; // double buffer
     uint32_t out_CB_size = out_CB_tiles * single_tile_size * 2; // double buffer
 
-    // dispatch to cores
+    // TODO currently use cores from (0, 0)
     uint32_t start_core_x = 0;
     uint32_t start_core_y = 0;
+    // CoreRangeSet all_cores(tt::tt_metal::num_cores_to_corerangeset(num_cores_x * num_cores_y, compute_with_storage_grid_size, true));
     CoreRange all_cores(
         {(std::size_t)start_core_x, (std::size_t)start_core_y},
         {(std::size_t)start_core_x + num_cores_x - 1, (std::size_t)start_core_y + num_cores_y - 1});
 
     // allocate circular buffers
-    uint32_t src0_cb_index = CB::c_in0; //0
+    uint32_t src0_cb_index = CB::c_in0; // 0
     CircularBufferConfig cb_src0_config = CircularBufferConfig(in0_CB_size, {{src0_cb_index, cb_data_format}})
 		.set_page_size(src0_cb_index, single_tile_size);
     auto cb_src0 = tt_metal::CreateCircularBuffer(program, all_cores, cb_src0_config);
@@ -96,13 +97,15 @@ operation::ProgramWithCallbacks create_program_cannon(
 
     auto reader_kernel_cannon = tt_metal::CreateKernel(
         program,
-        "ttnn/cpp/ttnn/operations/matmul/device/kernels/dataflow/reader_bmm_cannon_semaphore.cpp",
+        // "ttnn/cpp/ttnn/operations/matmul/device/kernels/dataflow/reader_bmm_cannon_semaphore.cpp",
+        "tt_metal/programming_examples/matmul_common/kernels/dataflow/reader_bmm_cannon_semaphore.cpp",
         all_cores,
         tt_metal::DataMovementConfig{.processor = tt_metal::DataMovementProcessor::RISCV_1, .noc = tt_metal::NOC::RISCV_1_default, .compile_args = reader_compile_time_args}
     );
     auto writer_kernel_cannon = tt_metal::CreateKernel(
         program,
-        "ttnn/cpp/ttnn/operations/matmul/device/kernels/dataflow/writer_bmm_cannon.cpp",
+        // "ttnn/cpp/ttnn/operations/matmul/device/kernels/dataflow/writer_bmm_cannon.cpp",
+        "tt_metal/programming_examples/matmul_common/kernels/dataflow/writer_bmm_cannon.cpp",
         all_cores,
         tt_metal::DataMovementConfig{.processor = tt_metal::DataMovementProcessor::RISCV_0, .noc = tt_metal::NOC::RISCV_0_default, .compile_args = writer_compile_time_args}
     );
@@ -119,7 +122,8 @@ operation::ProgramWithCallbacks create_program_cannon(
     };
     auto compute_kernel_cannon = tt_metal::CreateKernel(
         program,
-        "ttnn/cpp/ttnn/operations/matmul/device/kernels/compute/bmm_cannon_v2.cpp",
+        // "ttnn/cpp/ttnn/operations/matmul/device/kernels/compute/bmm_cannon_v2.cpp",
+        "tt_metal/programming_examples/matmul_common/kernels/compute/bmm_cannon_v2.cpp",
         all_cores,
         tt_metal::ComputeConfig{.math_fidelity = math_fidelity, .compile_args = compute_compile_time_args}
     );
@@ -132,6 +136,17 @@ operation::ProgramWithCallbacks create_program_cannon(
     for (uint32_t core_x = start_core_x; core_x < start_core_x + num_cores_x; ++core_x) {
         for (uint32_t core_y = start_core_y; core_y < start_core_y + num_cores_y; ++core_y) {
             CoreCoord core = {(std::size_t) core_x, (std::size_t) core_y};
+            CoreCoord src0_next_core = {(std::size_t) core_x, (std::size_t) (core_y + num_cores_y + 1) % num_cores_y};
+            CoreCoord src1_next_core = {(std::size_t) (core_x + num_cores_x + 1) % num_cores_x, (std::size_t) core_y};
+            CoreCoord src0_prev_core = {(std::size_t) core_x, (std::size_t) (core_y + num_cores_y - 1) % num_cores_y};
+            CoreCoord src1_prev_core = {(std::size_t) (core_x + num_cores_x - 1) % num_cores_x, (std::size_t) core_y};
+
+            auto core_physical = device->worker_core_from_logical_core(core);
+            auto src0_next_core_physical = device->worker_core_from_logical_core(src0_next_core);
+            auto src1_next_core_physical = device->worker_core_from_logical_core(src1_next_core);
+            auto src0_prev_core_physical = device->worker_core_from_logical_core(src0_prev_core);
+            auto src1_prev_core_physical = device->worker_core_from_logical_core(src1_prev_core);
+
             std::vector<uint32_t> reader_args = {
                 (std::uint32_t) Mt,
                 (std::uint32_t) Nt,
@@ -152,7 +167,15 @@ operation::ProgramWithCallbacks create_program_cannon(
                 (std::uint32_t) in0_sender_semaphore_id,
                 (std::uint32_t) in0_receiver_semaphore_id,
                 (std::uint32_t) in1_sender_semaphore_id,
-                (std::uint32_t) in1_receiver_semaphore_id
+                (std::uint32_t) in1_receiver_semaphore_id,
+                (std::uint32_t) src0_next_core_physical.x,
+                (std::uint32_t) src0_next_core_physical.y,
+                (std::uint32_t) src1_next_core_physical.x,
+                (std::uint32_t) src1_next_core_physical.y,
+                (std::uint32_t) src0_prev_core_physical.x,
+                (std::uint32_t) src0_prev_core_physical.y,
+                (std::uint32_t) src1_prev_core_physical.x,
+                (std::uint32_t) src1_prev_core_physical.y
             };
             tt_metal::SetRuntimeArgs(program, reader_kernel_cannon, core, reader_args);
 
@@ -251,6 +274,7 @@ operation::ProgramWithCallbacks matmul_multi_core_cannon(
     TT_FATAL(Mt % per_core_M == 0, "Error");
     TT_FATAL(Nt % per_core_N == 0, "Error");
     TT_FATAL(Mt == Nt, "Currently only supports square matrices");
+    TT_FATAL(per_core_M == per_core_N, "Currently only supports square matrices per core");
 
     tt_metal::Device *device = input_tensor_a.device();
     // auto compute_with_storage_grid_size = device->compute_with_storage_grid_size();

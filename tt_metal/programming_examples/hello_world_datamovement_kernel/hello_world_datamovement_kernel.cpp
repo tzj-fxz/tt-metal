@@ -4,6 +4,7 @@
 
 #include "tt_metal/host_api.hpp"
 #include "tt_metal/impl/device/device.hpp"
+#include "tt_metal/detail/tt_metal.hpp"
 
 using namespace tt;
 using namespace tt::tt_metal;
@@ -38,6 +39,7 @@ int main(int argc, char **argv) {
     SetRuntimeArgs(program, void_dataflow_kernel_noc1_id, core, {});
     EnqueueProgram(cq, program, false);
     printf("Hello, Core {0, 0} on Device 0, I am sending you some data. Standby awaiting communication.\n");
+    tt_metal::detail::DumpDeviceProfileResults(device);
 
     // Wait Until Program Finishes, Print "Hello World!", and Close Device
 

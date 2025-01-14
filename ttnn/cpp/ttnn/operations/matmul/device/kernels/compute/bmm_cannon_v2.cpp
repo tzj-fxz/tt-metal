@@ -6,6 +6,7 @@
 #include "compute_kernel_api/tile_move_copy.h"
 #include "compute_kernel_api/matmul.h"
 #include "tools/profiler/kernel_profiler.hpp"
+#include "debug/dprint.h"
 
 using std::uint32_t;
 
@@ -23,22 +24,15 @@ void MAIN {
     uint32_t per_core_K = get_compile_time_arg_val(6);
     uint32_t subblock_size_h = get_compile_time_arg_val(7); // for each subblock matrix
     uint32_t subblock_size_w = get_compile_time_arg_val(8); // for each subblock matrix
-    uint32_t subblock_h = per_core_M / subblock_size_h;
-    uint32_t subblock_w = per_core_N / subblock_size_w;
+    uint32_t subblock_h = per_core_M / subblock_size_h; // in0_num_subblock
+    uint32_t subblock_w = per_core_N / subblock_size_w; // in1_num_subblock
     uint32_t subblock_tiles = subblock_size_h * subblock_size_w;
 
     uint32_t num_block_x = Mt / per_core_M;
     uint32_t num_block_y = Nt / per_core_N;
 
-    uint32_t core_x = get_arg_val(0);
-    uint32_t core_y = get_arg_val(1);
-    uint32_t in0_sender_semaphore_id = get_semaphore(get_arg_val(2));
-    uint32_t in1_sender_semaphore_id = get_semaphore(get_arg_val(3));
-
-    volatile tt_l1_ptr uint32_t* in0_sender_semaphore_addr_ptr = reinterpret_cast<volatile tt_l1_ptr uint32_t*>(in0_sender_semaphore_id);
-    volatile tt_l1_ptr uint32_t* in1_sender_semaphore_addr_ptr = reinterpret_cast<volatile tt_l1_ptr uint32_t*>(in1_sender_semaphore_id);
-
-    uint32_t single_tile_size_bytes = get_tile_size(tt::CB::c_in0);
+    uint32_t core_x = get_arg_val<uint32_t>(0);
+    uint32_t core_y = get_arg_val<uint32_t>(1);
 
     mm_init();
     DeviceZoneScopedN("TEST-bmm-cannon");
@@ -48,15 +42,13 @@ void MAIN {
     uint32_t out_num_tiles = per_core_M * per_core_N;
 
     for (uint32_t nb = 0; nb < batch; ++nb) {
-        // each shift should do a matmul which contains many subblock matmul
         // TODO currently assume num_block_x == num_block_y
+        bool spill = num_block_x > 0;
+        bool enable_reload = false;
         for (uint32_t shift_num = 0; shift_num < num_block_x; ++shift_num) {
             cb_wait_front(tt::CB::c_in0, in0_num_tiles);
             cb_wait_front(tt::CB::c_in1, in1_num_tiles);
-            bool spill = num_block_x > 0;
-            bool enable_reload = false;
-            bool last_out = shift_num == (num_block_x - 1);
-
+            bool last_out = (shift_num == (num_block_x - 1));
             for (uint32_t subblock_m = 0; subblock_m < subblock_h; ++subblock_m) {
                 for (uint32_t subblock_n = 0; subblock_n < subblock_w; ++subblock_n) {
                     acquire_dst();
@@ -73,7 +65,7 @@ void MAIN {
                     }
 
                     int dst_index = 0;
-                    int in0_subblock_offset = subblock_m * per_core_K;
+                    int in0_subblock_offset = subblock_m * per_core_K * subblock_size_h;
                     int in1_subblock_offset = subblock_n * subblock_size_w;
 
                     for (uint32_t h = 0; h < subblock_size_h; ++h) {
@@ -89,6 +81,7 @@ void MAIN {
                     }
                     
                     if (last_out) {
+                        // DPRINT << "last out: use c_out0" << ENDL();
                         cb_reserve_back(tt::CB::c_out0, subblock_tiles);
                         for (uint32_t i = 0; i < subblock_tiles; ++i) {
                             pack_tile(i, tt::CB::c_out0);
@@ -105,10 +98,11 @@ void MAIN {
                     release_dst();
                 }
             }
-
-            // after compute, signal reader kernel to send data at the front of "in" CB
-            noc_semaphore_set(in0_sender_semaphore_addr_ptr, 1);
-            noc_semaphore_set(in1_sender_semaphore_addr_ptr, 1);
+            if (spill) {
+                enable_reload = true;
+            }
+            cb_pop_front(tt::CB::c_in0, in0_num_tiles);
+            cb_pop_front(tt::CB::c_in1, in1_num_tiles);
         }
     }
 }

@@ -1270,7 +1270,7 @@ void Matmul::validate(
                 } else {
                     TT_FATAL(M % per_core_M == 0, "per_core_M must divide M if per_core_M < M!");
                 }
-                TT_FATAL(N == per_core_N, "Error");
+                // TT_FATAL(N == per_core_N, "Error");
                 if (input_tensor_a.is_sharded()) {
                     TT_FATAL(input_tensor_a.memory_config().memory_layout != TensorMemoryLayout::WIDTH_SHARDED, "Error");
                     auto in0_shard_shape = input_tensor_a.shard_spec().value().shape;

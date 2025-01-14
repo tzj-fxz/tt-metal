@@ -15,7 +15,7 @@
 #include "tt_metal/detail/tt_metal.hpp"
 #include <chrono>
 
-constexpr uint32_t PROFILING_ITERATIONS = 10;
+constexpr uint32_t PROFILING_ITERATIONS = 1;
 
 using namespace tt::constants;
 using namespace std;

@@ -212,10 +212,15 @@ void matmul_cannon(std::vector<bfloat16>& a, std::vector<bfloat16>& b, std::vect
     for (uint32_t core_x = start_core_x; core_x < start_core_x + num_cores_x; ++core_x) {
         for (uint32_t core_y = start_core_y; core_y < start_core_y + num_cores_y; ++core_y) {
             CoreCoord core = {(std::size_t) core_x, (std::size_t) core_y};
-            CoreCoord src0_next_core = {(std::size_t) core_x, (std::size_t) (core_y + num_cores_y + 1) % num_cores_y};
-            CoreCoord src1_next_core = {(std::size_t) (core_x + num_cores_x + 1) % num_cores_x, (std::size_t) core_y};
-            CoreCoord src0_prev_core = {(std::size_t) core_x, (std::size_t) (core_y + num_cores_y - 1) % num_cores_y};
-            CoreCoord src1_prev_core = {(std::size_t) (core_x + num_cores_x - 1) % num_cores_x, (std::size_t) core_y};
+            // for NoC 0, next core is right and down; for NoC 1, next core is left and up
+            // CoreCoord src0_next_core = {(std::size_t) core_x, (std::size_t) (core_y + num_cores_y + 1) % num_cores_y};
+            // CoreCoord src1_next_core = {(std::size_t) (core_x + num_cores_x + 1) % num_cores_x, (std::size_t) core_y};
+            // CoreCoord src0_prev_core = {(std::size_t) core_x, (std::size_t) (core_y + num_cores_y - 1) % num_cores_y};
+            // CoreCoord src1_prev_core = {(std::size_t) (core_x + num_cores_x - 1) % num_cores_x, (std::size_t) core_y};
+            CoreCoord src0_next_core = {(std::size_t) (core_x + num_core_x - 1) % num_cores_x, (std::size_t) core_y};
+            CoreCoord src0_prev_core = {(std::size_t) (core_x + num_core_x + 1) % num_cores_x, (std::size_t) core_y};
+            CoreCoord src1_next_core = {(std::size_t) core_x, (std::size_t) (core_y + num_core_y - 1) % num_cores_y};
+            CoreCoord src1_prev_core = {(std::size_t) core_x, (std::size_t) (core_y + num_core_y + 1) % num_cores_y};
 
             auto core_physical = device->worker_core_from_logical_core(core);
             auto src0_next_core_physical = device->worker_core_from_logical_core(src0_next_core);

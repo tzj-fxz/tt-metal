@@ -4,7 +4,8 @@
 
 #pragma once
 
-
+#include "tools/profiler/kernel_profiler.hpp"
+#include "debug/dprint.h"
 #include "compute_kernel_api/common.h"
 #ifdef TRISC_MATH
 #include "llk_math_matmul_api.h"
@@ -28,16 +29,25 @@ namespace ckernel {
  * | transpose      | The transpose flag for performing transpose operation on B    | uint32_t |  Any positive value will indicate tranpose is set   | False    |
  */
 ALWI void mm_init(uint32_t in0_cb_id = 0, uint32_t in1_cb_id = 1, uint32_t out_cb_id = 16, const uint32_t transpose=0) {
-    UNPACK(( llk_unpack_AB_matmul_hw_configure_disaggregated<DST_ACCUM_MODE>(in0_cb_id, in1_cb_id) ));
-    UNPACK(( llk_unpack_AB_matmul_init(in0_cb_id, in1_cb_id, transpose) ));
+    {
+        // UNPACK(DeviceZoneScopedN("mm_init_unpack"));
+        UNPACK(( llk_unpack_AB_matmul_hw_configure_disaggregated<DST_ACCUM_MODE>(in0_cb_id, in1_cb_id) ));
+        UNPACK(( llk_unpack_AB_matmul_init(in0_cb_id, in1_cb_id, transpose) ));
+    }
 
-    MATH(( llk_math_matmul_init<MATH_FIDELITY>(in0_cb_id, in1_cb_id, transpose) ));
-    MATH(( llk_math_pack_sync_init<DST_ACCUM_MODE>()  ));
-    MATH(( llk_math_hw_configure_disaggregated(in0_cb_id, in1_cb_id) ));
+    {
+        // MATH(DeviceZoneScopedN("mm_init_math"));
+        MATH(( llk_math_matmul_init<MATH_FIDELITY>(in0_cb_id, in1_cb_id, transpose) ));
+        MATH(( llk_math_pack_sync_init<DST_ACCUM_MODE>()  ));
+        MATH(( llk_math_hw_configure_disaggregated(in0_cb_id, in1_cb_id) ));
+    }
 
-    PACK(( llk_pack_hw_configure_disaggregated<false, DST_ACCUM_MODE>(out_cb_id) ));
-    PACK(( llk_pack_init(out_cb_id)  ));
-    PACK(( llk_pack_dest_init<false, DST_ACCUM_MODE>()  ));
+    {
+        // PACK(DeviceZoneScopedN("mm_init_pack"));
+        PACK(( llk_pack_hw_configure_disaggregated<false, DST_ACCUM_MODE>(out_cb_id) ));
+        PACK(( llk_pack_init(out_cb_id)  ));
+        PACK(( llk_pack_dest_init<false, DST_ACCUM_MODE>()  ));
+    }
 }
 
 /**
@@ -57,8 +67,14 @@ ALWI void mm_init(uint32_t in0_cb_id = 0, uint32_t in1_cb_id = 1, uint32_t out_c
  * | dst_tile_index | The index of the tile in DST REG to which the result C will be written. | uint32_t | Must be less than the acquired size of DST REG | True     |
  */
 ALWI void matmul_tiles(uint32_t in0_cb_id, uint32_t in1_cb_id, uint32_t in0_tile_index, uint32_t in1_tile_index, uint32_t idst, const uint32_t transpose) {
-    UNPACK(( llk_unpack_AB_matmul(in0_cb_id, in1_cb_id, in0_tile_index, in1_tile_index) ));
-    MATH(( llk_math_matmul<MATH_FIDELITY>(idst, transpose)  ));
+    {
+        // UNPACK(DeviceZoneScopedN("matmul_tiles_unpack"));
+        UNPACK(( llk_unpack_AB_matmul(in0_cb_id, in1_cb_id, in0_tile_index, in1_tile_index) ));
+    }
+    {
+        // MATH(DeviceZoneScopedN("matmul_tiles_math"));
+        MATH(( llk_math_matmul<MATH_FIDELITY>(idst, transpose)  ));
+    }
 }
 
 /**
@@ -162,8 +178,14 @@ ALWI void mm_block_init(uint32_t in0_cb_id = 0, uint32_t in1_cb_id = 1, uint32_t
  * | kt_dim         | The inner dimension.                                                    | uint32_t | Must be equal to block A column dimension      | True     |
  */
 ALWI void matmul_block(uint32_t in0_cb_id, uint32_t in1_cb_id, uint32_t in0_tile_index, uint32_t in1_tile_index, uint32_t idst, const uint32_t transpose, uint32_t ct_dim, uint32_t rt_dim, uint32_t kt_dim) {
-    UNPACK(( llk_unpack_AB_matmul(in0_cb_id, in1_cb_id, in0_tile_index, in1_tile_index, ct_dim, rt_dim, kt_dim) ));
-    MATH(( llk_math_matmul<MATH_FIDELITY>(idst, transpose, ct_dim, rt_dim, kt_dim)  ));
+    {
+        // UNPACK(DeviceZoneScopedN("matmul_block_unpack"));
+        UNPACK(( llk_unpack_AB_matmul(in0_cb_id, in1_cb_id, in0_tile_index, in1_tile_index, ct_dim, rt_dim, kt_dim) ));
+    }
+    {
+        // MATH(DeviceZoneScopedN("matmul_block_math"));
+        MATH(( llk_math_matmul<MATH_FIDELITY>(idst, transpose, ct_dim, rt_dim, kt_dim)  ));
+    }
 }
 
 /**

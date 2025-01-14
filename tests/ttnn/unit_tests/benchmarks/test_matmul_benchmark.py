@@ -103,24 +103,24 @@ matmul_shapes_bfloat16 = [
 
 # m, k, n, strategy, in0_sharded, out_sharded, in0_block_w_div, num_out_blocks_h, num_out_blocks_w 
 matmul_shapes_bfloat16_square = [
-    (512, 512, 512, "NonOptimized", True, True, 1, 1, 1),
-    (1024, 1024, 1024, "NonOptimized", True, True, 1, 1, 1),
-    (2048, 2048, 2048, "NonOptimized", True, True, 1, 1, 1),
+    (512, 512, 512, "NonOptimized", False, False, 1, 1, 1),
+    (1024, 1024, 1024, "NonOptimized", False, False, 1, 1, 1),
+    (2048, 2048, 2048, "NonOptimized", False, False, 1, 1, 1),
     (4096, 4096, 4096, "NonOptimized", False, False, 1, 2, 2),
     (8192, 8192, 8192, "NonOptimized", False, False, 2, 4, 4),
-    (16384, 16384, 16384, "NonOptimized", False, False, 4, 8, 8),
-    (512, 512, 512, "Reuse", True, True, 1, 1, 1),
-    (1024, 1024, 1024, "Reuse", True, True, 1, 1, 1),
-    (2048, 2048, 2048, "Reuse", True, True, 1, 1, 1),
-    (4096, 4096, 4096, "Reuse", False, False, 1, 2, 2),
-    (8192, 8192, 8192, "Reuse", False, False, 2, 4, 4),
-    (16384, 16384, 16384, "Reuse", False, False, 4, 8, 8),
-    (512, 512, 512, "ReuseMultiCast", True, True, 1, 1, 1),
-    (1024, 1024, 1024, "ReuseMultiCast", True, True, 1, 1, 1),
-    (2048, 2048, 2048, "ReuseMultiCast", True, True, 1, 1, 1),
-    (4096, 4096, 4096, "ReuseMultiCast", False, False, 1, 2, 2),
-    (8192, 8192, 8192, "ReuseMultiCast", False, False, 2, 4, 4),
-    (16384, 16384, 16384, "ReuseMultiCast", False, False, 4, 8, 8),
+    # (16384, 16384, 16384, "NonOptimized", False, False, 4, 8, 8),
+    (512, 512, 512, "Reuse", False, False, 1, 1, 1),
+    (1024, 1024, 1024, "Reuse", False, False, 1, 1, 1),
+    (2048, 2048, 2048, "Reuse", False, False, 1, 1, 1),
+    (4096, 4096, 4096, "Reuse", True, True, 1, 2, 2),
+    (8192, 8192, 8192, "Reuse", True, True, 2, 4, 4),
+    (16384, 16384, 16384, "Reuse", True, True, 4, 8, 8),
+    (512, 512, 512, "ReuseMultiCast", False, False, 1, 1, 1),
+    (1024, 1024, 1024, "ReuseMultiCast", False, False, 1, 1, 1),
+    (2048, 2048, 2048, "ReuseMultiCast", False, False, 1, 1, 1),
+    (4096, 4096, 4096, "ReuseMultiCast", True, True, 1, 2, 2),
+    (8192, 8192, 8192, "ReuseMultiCast", True, True, 2, 4, 4),
+    (16384, 16384, 16384, "ReuseMultiCast", True, True, 4, 8, 8),
 ]
 
 matmul_shapes_bfloat16_cannon = [
@@ -220,6 +220,7 @@ def test_matmul_2d_host_perf(
         writer = csv.writer(file)
         writer.writerow(
             [
+                "strategy",
                 "m",
                 "k",
                 "n",
@@ -241,7 +242,8 @@ def test_matmul_2d_host_perf(
 
         for dtype, math_fidelity, use_trace in matmul_configs_square:
             if dtype == ttnn.bfloat16:
-                matmul_shapes = matmul_shapes_bfloat16_square + matmul_shapes_bfloat16_cannon
+                matmul_shapes = matmul_shapes_bfloat16_square
+                # matmul_shapes = matmul_shapes_bfloat16_square + matmul_shapes_bfloat16_cannon
             else:
                 raise NotImplementedError
             # elif dtype == ttnn.bfloat8_b:
@@ -261,7 +263,8 @@ def test_matmul_2d_host_perf(
                 out_block_w = per_core_N // num_out_blocks_w
                 out_subblock_h, out_subblock_w = get_subblock_sizes(out_block_h, out_block_w, out_sharded)
 
-                logger.info(f"M*K*N = {m}*{k}*{n} out_subblock_h: {out_subblock_h}, out_subblock_w: {out_subblock_w}")
+                logger.info(f"strategy: {strategy} M*K*N = {m}*{k}*{n} out_subblock_h: {out_subblock_h}, out_subblock_w: {out_subblock_w}")
+                logger.info(f"in0_block_w: {in0_block_w}, per_core_M: {per_core_M}, per_core_N: {per_core_N}")
 
                 in0 = torch.ones(in0_shape).bfloat16()
                 in1 = torch.randn(in1_shape).bfloat16()
@@ -303,7 +306,15 @@ def test_matmul_2d_host_perf(
                 )
                 
                 if strategy == "NonOptimized":
-                    program_config = ttnn.MatmulMultiCoreReuseProgramConfig()
+                    # program_config = ttnn.MatmulMultiCoreProgramConfig()
+                    program_config = ttnn.MatmulMultiCoreReuseProgramConfig(
+                        compute_with_storage_grid_size=grid_size,
+                        in0_block_w=1,
+                        out_subblock_h=1,
+                        out_subblock_w=1,
+                        per_core_M=1,
+                        per_core_N=1,
+                    )
                 elif strategy == "Reuse":
                     program_config = ttnn.MatmulMultiCoreReuseProgramConfig(
                         compute_with_storage_grid_size=grid_size,
@@ -327,7 +338,7 @@ def test_matmul_2d_host_perf(
                         fused_activation=None,
                     )
                 elif strategy == "Cannon":
-                    program_config = ttnn.MatmulMultiCoreReuseCannonProgramConfig(
+                    program_config = ttnn.MatmulMultiCoreCannonProgramConfig(
                         compute_with_storage_grid_size=grid_size,
                         out_subblock_h=out_subblock_h,
                         out_subblock_w=out_subblock_w,
@@ -336,6 +347,8 @@ def test_matmul_2d_host_perf(
                         # TODO: per_core_K is specified in cannon
                         per_core_K=per_core_M,
                     )
+                else:
+                    raise NotImplementedError
 
                 if is_grayskull():
                     compute_kernel_config = ttnn.GrayskullComputeKernelConfig(
@@ -447,6 +460,7 @@ def test_matmul_2d_host_perf(
                 ttnn.deallocate(in1_t)
                 writer.writerow(
                     [
+                        strategy,
                         m,
                         k,
                         n,

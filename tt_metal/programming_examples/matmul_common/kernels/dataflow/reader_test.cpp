@@ -16,10 +16,11 @@ void kernel_main() {
     uint32_t Mt         = get_arg_val<uint32_t>(2);
     uint32_t Kt         = get_arg_val<uint32_t>(3);
     uint32_t Nt         = get_arg_val<uint32_t>(4);
-    uint32_t MtKt       = get_arg_val<uint32_t>(5); // if 0
+    uint32_t MtKt       = get_arg_val<uint32_t>(5);
     uint32_t KtNt       = get_arg_val<uint32_t>(6);
     uint32_t batch      = get_arg_val<uint32_t>(7);
     uint32_t bcast_B    = get_arg_val<uint32_t>(8); // if 1 we broadcast B to batch
+    uint32_t num_blocks = get_arg_val<uint32_t>(9); // num_blocks
 
     constexpr bool src0_is_dram = get_compile_time_arg_val(0) == 1;
     constexpr bool src1_is_dram = get_compile_time_arg_val(1) == 1;
@@ -52,28 +53,32 @@ void kernel_main() {
         .data_format = src1_data_format
     };
 
-    cb_reserve_back(cb_id_in0, Mt * Kt);
+    cb_reserve_back(cb_id_in0, Mt * Kt * num_blocks);
     uint32_t l1_write_addr_in0 = get_write_ptr(cb_id_in0);
-    for (uint32_t m = 0; m < Mt; ++m) {
-        for (uint32_t k = 0; k < Kt; ++k) {
-            noc_async_read_tile(m * Kt + k, s0, l1_write_addr_in0);
-            l1_write_addr_in0 += src0_tile_bytes;
+    for (uint32_t block = 0; block < num_blocks; ++block) {
+        for (uint32_t m = 0; m < Mt; ++m) {
+            for (uint32_t k = 0; k < Kt; ++k) {
+                noc_async_read_tile(m * Kt + k, s0, l1_write_addr_in0);
+                l1_write_addr_in0 += src0_tile_bytes;
+            }
         }
     }
     noc_async_read_barrier();
     // DPRINT << TSLICE(tt::CB::c_in0, 0, SliceRange::hw0_32_4(), TSLICE_INPUT_CB, TSLICE_RD_PTR, true, false) << ENDL();
 
-    cb_reserve_back(cb_id_in1, Kt * Nt);
+    cb_reserve_back(cb_id_in1, Kt * Nt * num_blocks);
     uint32_t l1_write_addr_in1 = get_write_ptr(cb_id_in1);
-    for (uint32_t k = 0; k < Kt; ++k) {
-        for (uint32_t n = 0; n < Nt; ++n) {
-            noc_async_read_tile(k * Nt + n, s1, l1_write_addr_in1);
-            l1_write_addr_in1 += src1_tile_bytes;
+    for (uint32_t block = 0; block < num_blocks; ++block) {
+        for (uint32_t k = 0; k < Kt; ++k) {
+            for (uint32_t n = 0; n < Nt; ++n) {
+                noc_async_read_tile(k * Nt + n, s1, l1_write_addr_in1);
+                l1_write_addr_in1 += src1_tile_bytes;
+            }
         }
     }
     noc_async_read_barrier();
 
-    cb_push_back(cb_id_in0, Mt * Kt);
-    cb_push_back(cb_id_in1, Kt * Nt);
+    cb_push_back(cb_id_in0, Mt * Kt * num_blocks);
+    cb_push_back(cb_id_in1, Kt * Nt * num_blocks);
 
 }

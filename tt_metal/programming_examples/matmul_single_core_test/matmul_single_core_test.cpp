@@ -49,7 +49,7 @@ void golden_matmul(std::vector<bfloat16>& a, std::vector<bfloat16>& b, std::vect
 }
 
 void matmul_single_core(std::vector<bfloat16>& a, std::vector<bfloat16>& b, std::vector<bfloat16>& output, bool bcast_batch,
-                        uint32_t M, uint32_t N, uint32_t K, uint32_t B, Device* device) {
+                        uint32_t M, uint32_t N, uint32_t K, uint32_t B, Device* device, uint32_t num_blocks) {
 
     /*
     * Setup program to execute along with its buffers and kernels to use
@@ -76,9 +76,9 @@ void matmul_single_core(std::vector<bfloat16>& a, std::vector<bfloat16>& b, std:
     MathFidelity math_fidelity = MathFidelity::HiFi4;
     uint32_t single_tile_size = 2 * 32 * 32;
 
-    uint32_t dram_buffer_A_size = single_tile_size * Mt * Kt; // num_tiles of FP16_B, hard-coded in the reader/writer kernels
-    uint32_t dram_buffer_B_size = single_tile_size * Nt * Kt; // num_tiles of FP16_B, hard-coded in the reader/writer kernels
-    uint32_t dram_buffer_C_size = single_tile_size * Mt * Nt; // num_tiles of FP16_B, hard-coded in the reader/writer kernels
+    uint32_t dram_buffer_A_size = num_blocks * single_tile_size * Mt * Kt; // num_tiles of FP16_B, hard-coded in the reader/writer kernels
+    uint32_t dram_buffer_B_size = num_blocks * single_tile_size * Nt * Kt; // num_tiles of FP16_B, hard-coded in the reader/writer kernels
+    uint32_t dram_buffer_C_size = num_blocks * single_tile_size * Mt * Nt; // num_tiles of FP16_B, hard-coded in the reader/writer kernels
 
     /* DRAM buffer size = input full size */
     /* limiting page_size = single tile size; to allow DRAM channels interleaving */
@@ -118,18 +118,18 @@ void matmul_single_core(std::vector<bfloat16>& a, std::vector<bfloat16>& b, std:
     */
     uint32_t src0_cb_index = CB::c_in0; //0
     uint32_t num_input_tiles = 2;
-    CircularBufferConfig cb_src0_config = CircularBufferConfig(num_input_tiles * single_tile_size * Mt * Kt, {{src0_cb_index, cb_data_format}})
+    CircularBufferConfig cb_src0_config = CircularBufferConfig(num_input_tiles * single_tile_size * Mt * Kt * num_blocks, {{src0_cb_index, cb_data_format}})
 		.set_page_size(src0_cb_index, single_tile_size);
     auto cb_src0 = tt_metal::CreateCircularBuffer(program, core, cb_src0_config);
 
     uint32_t src1_cb_index = CB::c_in1; // 1
-    CircularBufferConfig cb_src1_config = CircularBufferConfig(num_input_tiles * single_tile_size * Kt * Nt, {{src1_cb_index, cb_data_format}})
+    CircularBufferConfig cb_src1_config = CircularBufferConfig(num_input_tiles * single_tile_size * Kt * Nt * num_blocks, {{src1_cb_index, cb_data_format}})
 		.set_page_size(src1_cb_index, single_tile_size);
     auto cb_src1 = tt_metal::CreateCircularBuffer(program, core, cb_src1_config);
 
     uint32_t output_cb_index = CB::c_out0; // output operands start at index 16
     uint32_t num_output_tiles = 2;
-    CircularBufferConfig cb_output_config = CircularBufferConfig(num_output_tiles * single_tile_size * Mt * Nt, {{output_cb_index, cb_data_format}})
+    CircularBufferConfig cb_output_config = CircularBufferConfig(num_output_tiles * single_tile_size * Mt * Nt * num_blocks, {{output_cb_index, cb_data_format}})
 		.set_page_size(output_cb_index, single_tile_size);
     auto cb_output = tt_metal::CreateCircularBuffer(program, core, cb_output_config);
 
@@ -163,7 +163,8 @@ void matmul_single_core(std::vector<bfloat16>& a, std::vector<bfloat16>& b, std:
         Mt, // Mt
         Kt, // Kt
         Nt, // Nt
-        512 // round
+        num_blocks, // num_blocks
+        128 // round
     };
     auto matmul_single_core_kernel_id = tt_metal::CreateKernel(
         program,
@@ -177,7 +178,7 @@ void matmul_single_core(std::vector<bfloat16>& a, std::vector<bfloat16>& b, std:
     */
     tt_metal::SetRuntimeArgs(
         program, reader_id, core,
-        {src0_addr, src1_addr, Mt, Kt, Nt, Mt*Kt, Kt*Nt, B, uint32_t(bcast_batch ? 1 : 0)}
+        {src0_addr, src1_addr, Mt, Kt, Nt, Mt*Kt, Kt*Nt, B, uint32_t(bcast_batch ? 1 : 0), num_blocks}
     );
 
     tt_metal::SetRuntimeArgs(
@@ -219,8 +220,8 @@ int main(int argc, char **argv) {
         constexpr int device_id = 0;
         Device *device = CreateDevice(device_id);
 
-        constexpr uint32_t tile_h = 2;
-        constexpr uint32_t tile_w = 1;
+        constexpr uint32_t tile_h = 4;
+        constexpr uint32_t tile_w = 2;
 
         /* Create source data */
         constexpr uint32_t M = TILE_HEIGHT * tile_h;  // user-defined
@@ -232,10 +233,11 @@ int main(int argc, char **argv) {
         uint32_t Kt = K / TILE_WIDTH;
         uint32_t Nt = N / TILE_WIDTH;
 
+        constexpr uint32_t num_blocks = 16;
         constexpr uint32_t single_tile_size = 2 * 1024;
-        uint32_t dram_buffer_A_size = single_tile_size * Mt * Kt; // num_tiles of FP16_B
-        uint32_t dram_buffer_B_size = single_tile_size * Nt * Kt; // num_tiles of FP16_B
-        uint32_t dram_buffer_C_size = single_tile_size * Mt * Nt; // num_tiles of FP16_B
+        uint32_t dram_buffer_A_size = num_blocks * single_tile_size * Mt * Kt; // num_tiles of FP16_B
+        uint32_t dram_buffer_B_size = num_blocks * single_tile_size * Nt * Kt; // num_tiles of FP16_B
+        uint32_t dram_buffer_C_size = num_blocks * single_tile_size * Mt * Nt; // num_tiles of FP16_B
 
         /* input vectors with various ranges of values */
         std::vector<bfloat16> src0_vec = create_random_vector_of_bfloat16_native(dram_buffer_A_size, 1, 123);
@@ -251,7 +253,7 @@ int main(int argc, char **argv) {
 
         /* Calling the MatMul host program. Read in result into a host vector */
         std::vector<bfloat16> result_vec(dram_buffer_C_size/sizeof(bfloat16));
-        matmul_single_core(src0_vec, src1_vec, result_vec, false, M, N, K, B, device);
+        matmul_single_core(src0_vec, src1_vec, result_vec, false, M, N, K, B, device, num_blocks);
         tt_metal::detail::DumpDeviceProfileResults(device);
         untilize(result_vec, M, N);
 

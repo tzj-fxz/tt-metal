@@ -57,6 +57,16 @@ def get_subblock_sizes(m_tiles_per_core, n_tiles_per_core, out_sharded=False, fp
 
     return (1, 1)
 
+def get_subblock_sizes_cannon(m_tiles_per_core, n_tiles_per_core, out_sharded=False):
+    # Default subblock size for Cannon's algorithm
+    for subblock_hw in SUBBLOCK_HW_CHOICES:
+        out_subblock_h = subblock_hw[0]
+        out_subblock_w = subblock_hw[1]
+
+        if m_tiles_per_core % out_subblock_h == 0 and n_tiles_per_core % out_subblock_w == 0:
+            return (out_subblock_h, out_subblock_w)
+        
+    return (1, 1)
 
 # This test runs different shapes for matmul_2d, with possibly the best configurations for performance.
 #
@@ -82,19 +92,22 @@ def get_device_freq():
     return freq
 
 
+matmul_shapes_bfloat16_no_sharded = [
+    (512, 512, 512, False, False, 1, 1, 1),
+    (1024, 1024, 1024, False, False, 1, 1, 1),
+    (2048, 2048, 2048, False, False, 1, 1, 1),
+    # (3072, 3072, 3072, False, False, 4, 1, 1),
+    # (4096, 4096, 4096, False, False, 1, 2, 2),
+    # (8192, 8192, 8192, False, False, 2, 4, 4),
+    # (16384, 16384, 16384, False, False, 4, 8, 8),
+]
+
+
 matmul_shapes_bfloat16 = [
     (512, 512, 512, True, True, 1, 1, 1),
-    (512, 1024, 1024, True, True, 1, 1, 1),
-    (512, 1024, 2048, True, True, 1, 1, 1),
     (1024, 1024, 1024, True, True, 1, 1, 1),
-    (1024, 1024, 2048, True, True, 1, 1, 1),
-    (1024, 2048, 2048, True, True, 1, 1, 1),
     (2048, 2048, 2048, True, True, 1, 1, 1),
-    # (2048, 2048, 3072, True, True, 1, 1, 1),
-    # (2048, 3072, 3072, True, True, 2, 1, 1),
     # (3072, 3072, 3072, True, True, 4, 1, 1),
-    # (3072, 3072, 4096, False, False, 2, 1, 1),
-    # (3072, 4096, 4096, False, False, 2, 1, 1),
     # (4096, 4096, 4096, False, False, 1, 2, 2),
     # (8192, 8192, 8192, False, False, 2, 4, 4),
     # (16384, 16384, 16384, False, False, 4, 8, 8),
@@ -102,38 +115,22 @@ matmul_shapes_bfloat16 = [
 
 matmul_shapes_bfloat8_b = [
     (512, 512, 512, True, True, 1, 1, 1),
-    (512, 1024, 1024, True, True, 1, 1, 1),
-    (512, 1024, 2048, True, True, 1, 1, 1),
     (1024, 1024, 1024, True, True, 1, 1, 1),
-    (1024, 1024, 2048, True, True, 1, 1, 1),
-    (1024, 2048, 2048, True, True, 1, 1, 1),
     (2048, 2048, 2048, True, True, 1, 1, 1),
-    # (2048, 2048, 3072, True, True, 1, 1, 1),
-    # (2048, 3072, 3072, True, True, 1, 1, 1),
-    # (3072, 3072, 3072, True, True, 2, 1, 1),
-    # (3072, 3072, 4096, True, True, 2, 1, 1),
-    # (3072, 4096, 4096, True, True, 1, 2, 2),
-    # (4096, 4096, 4096, False, False, 1, 2, 2),
-    # (8192, 8192, 8192, False, False, 2, 4, 4),
-    # (16384, 16384, 16384, False, False, 4, 8, 8),
+    (3072, 3072, 3072, True, True, 2, 1, 1),
+    (4096, 4096, 4096, False, False, 1, 2, 2),
+    (8192, 8192, 8192, False, False, 2, 4, 4),
+    (16384, 16384, 16384, False, False, 4, 8, 8),
 ]
 
 matmul_shapes_bfloat4_b = [
     (512, 512, 512, True, True, 1, 1, 1),
-    (512, 1024, 1024, True, True, 1, 1, 1),
-    (512, 1024, 2048, True, True, 1, 1, 1),
     (1024, 1024, 1024, True, True, 1, 1, 1),
-    (1024, 1024, 2048, True, True, 1, 1, 1),
-    (1024, 2048, 2048, True, True, 1, 1, 1),
     (2048, 2048, 2048, True, True, 1, 1, 1),
-    # (2048, 2048, 3072, True, True, 1, 1, 1),
-    # (2048, 3072, 3072, True, True, 1, 1, 1),
-    # (3072, 3072, 3072, True, True, 1, 1, 1),
-    # (3072, 3072, 4096, True, True, 1, 1, 1),
-    # (3072, 4096, 4096, True, True, 2, 1, 1),
-    # (4096, 4096, 4096, True, True, 2, 1, 1),
-    # (8192, 8192, 8192, False, False, 2, 2, 2),
-    # (16384, 16384, 16384, False, False, 4, 4, 4),
+    (3072, 3072, 3072, True, True, 1, 1, 1),
+    (4096, 4096, 4096, True, True, 2, 1, 1),
+    (8192, 8192, 8192, False, False, 2, 2, 2),
+    (16384, 16384, 16384, False, False, 4, 4, 4),
 ]
 
 matmul_configs = [
@@ -156,7 +153,7 @@ matmul_configs = [
 @pytest.mark.parametrize("tile_h", [32])
 @pytest.mark.parametrize("tile_w", [32])
 @pytest.mark.parametrize("num_warmup_iterations", [5])
-@pytest.mark.parametrize("num_measurement_iterations", [100])
+@pytest.mark.parametrize("num_measurement_iterations", [20])
 def test_matmul_2d_host_perf(
     device,
     grid_size,
@@ -169,7 +166,7 @@ def test_matmul_2d_host_perf(
     ENVS = dict(os.environ)
     TT_METAL_HOME = Path(ENVS["TT_METAL_HOME"])
     ARTIFACTS_DIR = TT_METAL_HOME / "generated"
-    FILE_NAME = ARTIFACTS_DIR / "matmul_2d_host_perf_report_1230.csv"
+    FILE_NAME = ARTIFACTS_DIR / "matmul_2d_host_perf_report_cannon_1230.csv"
 
     LoFi_cycle = 16
     HiFi2_cycle = LoFi_cycle * 2
@@ -201,7 +198,7 @@ def test_matmul_2d_host_perf(
 
         for dtype, math_fidelity, use_trace in matmul_configs:
             if dtype == ttnn.bfloat16:
-                matmul_shapes = matmul_shapes_bfloat16
+                matmul_shapes = matmul_shapes_bfloat16_no_sharded
             # elif dtype == ttnn.bfloat8_b:
             #     matmul_shapes = matmul_shapes_bfloat8_b
             # elif dtype == ttnn.bfloat4_b:
@@ -209,13 +206,6 @@ def test_matmul_2d_host_perf(
             else:
                 continue
             for m, k, n, in0_sharded, out_sharded, in0_block_w_div, num_out_blocks_h, num_out_blocks_w in matmul_shapes:
-
-                # For cannon
-                if m != k or k != n:
-                    continue
-                in0_sharded = False
-                out_sharded = False
-
                 profiler.clear()
 
                 in0_shape = [1, 1, m, k]
@@ -226,7 +216,7 @@ def test_matmul_2d_host_perf(
                 per_core_N = n // grid_size[0] // tile_w
                 out_block_h = per_core_M // num_out_blocks_h
                 out_block_w = per_core_N // num_out_blocks_w
-                out_subblock_h, out_subblock_w = get_subblock_sizes(out_block_h, out_block_w, out_sharded)
+                out_subblock_h, out_subblock_w = get_subblock_sizes_cannon(out_block_h, out_block_w, out_sharded)
 
                 logger.info(f"M*K*N = {m}*{k}*{n} out_subblock_h: {out_subblock_h}, out_subblock_w: {out_subblock_w}")
 
@@ -269,17 +259,13 @@ def test_matmul_2d_host_perf(
                     memory_config=ttnn.DRAM_MEMORY_CONFIG,
                 )
 
-                program_config = ttnn.MatmulMultiCoreReuseMultiCastProgramConfig(
+                program_config = ttnn.MatmulMultiCoreCannonProgramConfig(
                     compute_with_storage_grid_size=grid_size,
-                    in0_block_w=in0_block_w,
                     out_subblock_h=out_subblock_h,
                     out_subblock_w=out_subblock_w,
-                    out_block_h=out_block_h,
-                    out_block_w=out_block_w,
                     per_core_M=per_core_M,
                     per_core_N=per_core_N,
-                    transpose_mcast=False,
-                    fused_activation=None,
+                    per_core_K=per_core_N,
                 )
 
                 if is_grayskull():

@@ -4,11 +4,9 @@
 
 #include "dataflow_api.h"
 #include "tools/profiler/kernel_profiler.hpp"
+#include "debug/dprint.h"
 
 void kernel_main() {
-    DeviceZoneScopedN("TEST-writer_bmm_cannon");
-
-    // need reorder
     uint32_t Mt = get_arg_val<uint32_t>(0);
     uint32_t Nt = get_arg_val<uint32_t>(1);
     uint32_t Kt = get_arg_val<uint32_t>(2);
