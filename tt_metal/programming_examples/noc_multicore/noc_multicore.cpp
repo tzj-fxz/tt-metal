@@ -31,7 +31,7 @@ int main(int argc, char **argv) {
         */
         constexpr int device_id = 0;
         Device *device =
-            CreateDevice(device_id);
+            CreateDevice(device_id, 1, DEFAULT_L1_SMALL_SIZE, DEFAULT_TRACE_REGION_SIZE, DispatchCoreType::ETH);
 
         /*
         * Setup program and command queue to execute along with its buffers and kernels to use
@@ -39,21 +39,28 @@ int main(int argc, char **argv) {
         CommandQueue& cq = device->command_queue();
         Program program = CreateProgram();
 
-        constexpr CoreCoord core1 = {1, 3};
-        constexpr CoreCoord core2 = {7, 3};
+        uint32_t core_size_x = 7;
+        uint32_t core_size_y = 7;
+        uint32_t start_core_x = 0;
+        uint32_t start_core_y = 0;
+
+        CoreRange all_cores(
+            {(std::size_t)start_core_x, (std::size_t)start_core_y},
+            {(std::size_t)start_core_x + core_size_x - 1, (std::size_t)start_core_y + core_size_y - 1}
+        );
 
         KernelHandle dram_sender_kernel_id = CreateKernel(
             program,
-            "tt_metal/programming_examples/noc/kernels/noc_sender_notile.cpp",
-            core1,
-            DataMovementConfig{.processor = DataMovementProcessor::RISCV_1, .noc = NOC::RISCV_1_default, .noc_mode = NOC_MODE::DM_DEDICATED_NOC}
+            "tt_metal/programming_examples/noc_multicore/kernels/noc_sender_notile.cpp",
+            all_cores,
+            DataMovementConfig{.processor = DataMovementProcessor::RISCV_0, .noc = NOC::RISCV_1_default, .noc_mode = NOC_MODE::DM_DEDICATED_NOC}
         );
 
         KernelHandle dram_receiver_kernel_id = CreateKernel(
             program,
-            "tt_metal/programming_examples/noc/kernels/noc_receiver.cpp",
-            core2,
-            DataMovementConfig{.processor = DataMovementProcessor::RISCV_0, .noc = NOC::RISCV_0_default}
+            "tt_metal/programming_examples/noc_multicore/kernels/noc_receiver.cpp",
+            all_cores,
+            DataMovementConfig{.processor = DataMovementProcessor::RISCV_1, .noc = NOC::RISCV_0_default}
         );
 
         tt::DataFormat cb_data_format = tt::DataFormat::Float16_b;
@@ -82,12 +89,12 @@ int main(int argc, char **argv) {
         uint32_t src_cb_index = tt::CB::c_in0; //0
         CircularBufferConfig cb_src_config = CircularBufferConfig(cb_buffer_size, {{src_cb_index, cb_data_format}})
             .set_page_size(src_cb_index, single_tile_size);
-        auto cb_src = tt_metal::CreateCircularBuffer(program, core1, cb_src_config);
+        auto cb_src = tt_metal::CreateCircularBuffer(program, all_cores, cb_src_config);
  
         uint32_t dst_cb_index = tt::CB::c_out0; //0
         CircularBufferConfig cb_dst_config = CircularBufferConfig(cb_buffer_size, {{dst_cb_index, cb_data_format}})
             .set_page_size(dst_cb_index, single_tile_size);
-        auto cb_dst = tt_metal::CreateCircularBuffer(program, core2, cb_dst_config);
+        auto cb_dst = tt_metal::CreateCircularBuffer(program, all_cores, cb_dst_config);
  
         /*
         * Create input data and runtime arguments, then execute
@@ -96,42 +103,52 @@ int main(int argc, char **argv) {
             dram_buffer_size, 100, std::chrono::system_clock::now().time_since_epoch().count());
         EnqueueWriteBuffer(cq, input_dram_buffer, input_vec, false);
 
-        auto core1_physical = device->worker_core_from_logical_core(core1);
-        auto core2_physical = device->worker_core_from_logical_core(core2); 
+        for (uint32_t i = 0; i < core_size_x; ++i) {
+            for (uint32_t j = 0; j < core_size_y; ++j) {
+                CoreCoord core = {start_core_x + i, start_core_y + j};
+                // down or right
+                CoreCoord core_right = {(start_core_x + (i - 1) % core_size_x) % 8, (start_core_y + j) % 8};
+                CoreCoord core_down = {(start_core_x + i) % 8, (start_core_y + (j + 1) % core_size_y) % 8};
+                auto core_physical = device->worker_core_from_logical_core(core);
+                auto core_right_physical = device->worker_core_from_logical_core(core_right);
+                auto core_down_physical = device->worker_core_from_logical_core(core_down);
 
-        const std::vector<uint32_t> sender_args = {
-            input_dram_buffer->address(),
-            core2_physical.x,
-            core2_physical.y,
-            dram_tiles,
-            cb_tiles,
-            repeat,
-            static_cast<uint32_t>(input_dram_buffer->noc_coordinates().x),
-            static_cast<uint32_t>(input_dram_buffer->noc_coordinates().y),
-            bandwidth_size,
+                const std::vector<uint32_t> sender_args = {
+                    input_dram_buffer->address(),
+                    core_right_physical.x,
+                    core_right_physical.y,
+                    dram_tiles,
+                    cb_tiles,
+                    repeat,
+                    static_cast<uint32_t>(input_dram_buffer->noc_coordinates().x),
+                    static_cast<uint32_t>(input_dram_buffer->noc_coordinates().y),
+                    bandwidth_size,
+                    core_down_physical.x,
+                    core_down_physical.y
+                };
+                const std::vector<uint32_t> receiver_args = {
+                    output_dram_buffer->address(),
+                    core_physical.x,
+                    core_physical.y,
+                    dram_tiles,
+                    cb_tiles,
+                    repeat
+                };
+                SetRuntimeArgs(
+                    program,
+                    dram_sender_kernel_id,
+                    core,
+                    sender_args
+                );
+                SetRuntimeArgs(
+                    program,
+                    dram_receiver_kernel_id,
+                    core,
+                    receiver_args
+                );
 
-        };
-        const std::vector<uint32_t> receiver_args = {
-            output_dram_buffer->address(),
-            core1_physical.x,
-            core1_physical.y,
-            dram_tiles,
-            cb_tiles,
-            repeat
-        };
-
-        SetRuntimeArgs(
-            program,
-            dram_sender_kernel_id,
-            core1,
-            sender_args
-        );
-        SetRuntimeArgs(
-            program,
-            dram_receiver_kernel_id,
-            core2,
-            receiver_args
-        );
+            }
+        }
 
         EnqueueProgram(cq, program, false);
         Finish(cq);

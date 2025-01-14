@@ -18,6 +18,8 @@ void kernel_main() {
     std::uint32_t dram_src_noc_x = get_arg_val<uint32_t>(6);
     std::uint32_t dram_src_noc_y = get_arg_val<uint32_t>(7);
     std::uint32_t bandwidth_size = get_arg_val<uint32_t>(8);
+    std::uint32_t dst_core_x_down = get_arg_val<uint32_t>(9);
+    std::uint32_t dst_core_y_down = get_arg_val<uint32_t>(10);
 
     const uint32_t src_tile_bytes = get_tile_size(tt::CB::c_in0);
     // std::uint32_t batch = dram_tiles * src_tile_bytes / bandwidth_size;
@@ -25,6 +27,7 @@ void kernel_main() {
 
     cb_reserve_back(tt::CB::c_in0, cb_tiles);
     std::uint64_t dram_src_noc = get_noc_addr(dram_src_noc_x, dram_src_noc_y, input_address);
+
     std::uint32_t l1_write_addr_in0 = get_write_ptr(tt::CB::c_in0);
     std::uint32_t in0_start_addr = l1_write_addr_in0;
     noc_async_read(dram_src_noc, l1_write_addr_in0, 2 * bandwidth_size);
@@ -38,8 +41,11 @@ void kernel_main() {
             for (uint32_t b = 0; b < batch; ++b) {
                 uint64_t noc_addr = get_noc_addr(dst_core_x, dst_core_y, in0_start_addr);
                 noc_async_write(l1_write_addr_in0, noc_addr, bandwidth_size);
+                // uint64_t noc_addr_down = get_noc_addr(dst_core_x_down, dst_core_y_down, in0_start_addr + bandwidth_size);
+                // noc_async_write(l1_write_addr_in0, noc_addr_down, bandwidth_size);
             }
         }
+
         noc_async_write_barrier();
     }
 }

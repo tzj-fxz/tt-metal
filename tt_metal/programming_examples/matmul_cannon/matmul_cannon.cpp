@@ -21,8 +21,8 @@ constexpr uint32_t PER_CORE_N = 8;
 constexpr uint32_t PER_CORE_K = 8;
 constexpr uint32_t CORE_NUM_X = 7;
 constexpr uint32_t CORE_NUM_Y = 7;
-constexpr uint32_t DRAM_SHARD_X = 8;
-constexpr uint32_t DRAM_SHARD_Y = 8;
+constexpr uint32_t DRAM_SHARD_X = 8; // each time load from DRAM/NoC: height
+constexpr uint32_t DRAM_SHARD_Y = 8; // each time load from DRAM/NoC: width
 constexpr uint32_t SUBBLOCK_SIZE_H = 4;
 constexpr uint32_t SUBBLOCK_SIZE_W = 2;
 
@@ -108,7 +108,7 @@ void matmul_cannon(std::vector<bfloat16>& a, std::vector<bfloat16>& b, std::vect
     uint32_t dram_buffer_C_size = single_tile_size * Mt * Nt; // num_tiles of FP16_B, hard-coded in the reader/writer kernels
     uint32_t in0_CB_size = in0_CB_tiles * single_tile_size * 2; // double buffer, but for dram load pipeline, should be four-fold buffer
     uint32_t in1_CB_size = in1_CB_tiles * single_tile_size * 2; // double buffer, but for dram load pipeline, should be four-fold buffer
-    uint32_t out_CB_size = out_CB_tiles * single_tile_size * 2; // double buffer, but for dram load pipeline, should be four-fold buffer
+    uint32_t out_CB_size = out_CB_tiles * single_tile_size; // double buffer, but for dram load pipeline, should be four-fold buffer
     // dram buffer and circular buffer config for each core
     tt_metal::InterleavedBufferConfig dram_config_A{
                     .device= device,
@@ -199,6 +199,7 @@ void matmul_cannon(std::vector<bfloat16>& a, std::vector<bfloat16>& b, std::vect
     auto compute_kernel_cannon = tt_metal::CreateKernel(
         program,
         "tt_metal/programming_examples/matmul_common/kernels/compute/bmm_cannon_v3.cpp",
+        // "tt_metal/programming_examples/matmul_common/kernels/compute/bmm_cannon_dummy.cpp",
         all_cores,
         tt_metal::ComputeConfig{.math_fidelity = math_fidelity, .compile_args = compute_compile_time_args}
     );

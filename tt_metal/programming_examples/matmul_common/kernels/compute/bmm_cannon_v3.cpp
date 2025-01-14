@@ -64,6 +64,7 @@ void MAIN {
                     cb_wait_front(tt::CB::c_in1, in1_num_tiles);
                     {
                         UNPACK(DeviceZoneScopedN("TEST-bmm-shift"));
+                        PACK(DeviceZoneScopedN("TEST-bmm-shift"));
                         DPRINT << num_block_x << ENDL();
                         bool last_out = (shift_num == (num_block_x - 1));
                         for (uint32_t subblock_m = 0; subblock_m < subblock_h; ++subblock_m) {
@@ -83,7 +84,7 @@ void MAIN {
                                 int in1_subblock_offset = subblock_n * subblock_size_w;
 
                                 {
-                                    MATH(DeviceZoneScopedN("TEST-bmm-inner"));
+                                    // MATH(DeviceZoneScopedN("TEST-bmm-inner"));
                                     for (uint32_t inner_dim = 0; inner_dim < per_core_K; ++inner_dim) {
                                         matmul_block(
                                             tt::CB::c_in0,

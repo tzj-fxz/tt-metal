@@ -90,46 +90,50 @@ void kernel_main() {
                 // cb_reserve_back(tt::CB::c_in0, src0_block_tiles);
                 // cb_reserve_back(tt::CB::c_in1, src1_block_tiles);
                 // For DRAM independent buffer
-                DeviceZoneScopedN("TEST-reader_bmm_cannon_initial");
-                while (!cb_pages_reservable_at_back(tt::CB::c_in0, src0_sharded_tiles)) {}
-                while (!cb_pages_reservable_at_back(tt::CB::c_in1, src1_sharded_tiles)) {}
-                cb_reserve_back(tt::CB::c_in0, src0_sharded_tiles);
-                cb_reserve_back(tt::CB::c_in1, src1_sharded_tiles);
-                l1_write_addr_in0 = get_write_ptr(tt::CB::c_in0);
-                l1_write_addr_in1 = get_write_ptr(tt::CB::c_in1);
-                uint32_t in0_start_addr = l1_write_addr_in0;
-                uint32_t in1_start_addr = l1_write_addr_in1;
-                // currently only support square, means per_core_M = per_core_N (= per_core_K)
-                // now, we manually skew src_start_tile_id to let reader kernel read the correct initial block.
-                src0_start_tile_id = core_x * Kt * per_core_M + ((core_y + core_x) % num_block_y) * per_core_K;
-                src0_start_tile_id += dram_shard_h * dram_shard_x * Kt;
-                for (uint32_t h = 0; h < dram_shard_x; ++h) {
-                    for (uint32_t w = 0; w < per_core_K; ++w) {
-                        noc_async_read_tile(src0_start_tile_id + h * Kt + w, s0, l1_write_addr_in0);
-                        l1_write_addr_in0 += src0_tile_bytes;
+                uint32_t in0_start_addr;
+                uint32_t in1_start_addr;
+                {
+                    DeviceZoneScopedN("TEST-reader_bmm_cannon_initial");
+                    while (!cb_pages_reservable_at_back(tt::CB::c_in0, src0_sharded_tiles)) {}
+                    while (!cb_pages_reservable_at_back(tt::CB::c_in1, src1_sharded_tiles)) {}
+                    cb_reserve_back(tt::CB::c_in0, src0_sharded_tiles);
+                    cb_reserve_back(tt::CB::c_in1, src1_sharded_tiles);
+                    l1_write_addr_in0 = get_write_ptr(tt::CB::c_in0);
+                    l1_write_addr_in1 = get_write_ptr(tt::CB::c_in1);
+                    in0_start_addr = l1_write_addr_in0;
+                    in1_start_addr = l1_write_addr_in1;
+                    // currently only support square, means per_core_M = per_core_N (= per_core_K)
+                    // now, we manually skew src_start_tile_id to let reader kernel read the correct initial block.
+                    src0_start_tile_id = core_x * Kt * per_core_M + ((core_y + core_x) % num_block_y) * per_core_K;
+                    src0_start_tile_id += dram_shard_h * dram_shard_x * Kt;
+                    for (uint32_t h = 0; h < dram_shard_x; ++h) {
+                        for (uint32_t w = 0; w < per_core_K; ++w) {
+                            noc_async_read_tile(src0_start_tile_id + h * Kt + w, s0, l1_write_addr_in0);
+                            l1_write_addr_in0 += src0_tile_bytes;
+                        }
                     }
-                }
-                src1_start_tile_id = ((core_x + core_y) % num_block_x) * Nt * per_core_K + core_y * per_core_N;
-                src1_start_tile_id += dram_shard_w * dram_shard_y;
-                for (uint32_t h = 0; h < per_core_K; ++h) {
-                    for (uint32_t w = 0; w < dram_shard_y; ++w) {
-                        noc_async_read_tile(src1_start_tile_id + h * Nt + w, s1, l1_write_addr_in1);
-                        l1_write_addr_in1 += src1_tile_bytes;
+                    src1_start_tile_id = ((core_x + core_y) % num_block_x) * Nt * per_core_K + core_y * per_core_N;
+                    src1_start_tile_id += dram_shard_w * dram_shard_y;
+                    for (uint32_t h = 0; h < per_core_K; ++h) {
+                        for (uint32_t w = 0; w < dram_shard_y; ++w) {
+                            noc_async_read_tile(src1_start_tile_id + h * Nt + w, s1, l1_write_addr_in1);
+                            l1_write_addr_in1 += src1_tile_bytes;
+                        }
                     }
-                }
-                noc_async_read_barrier();
-                
-                cb_push_back(tt::CB::c_in0, src0_sharded_tiles);
-                cb_push_back(tt::CB::c_in1, src1_sharded_tiles);
+                    noc_async_read_barrier();
+                    
+                    cb_push_back(tt::CB::c_in0, src0_sharded_tiles);
+                    cb_push_back(tt::CB::c_in1, src1_sharded_tiles);
 
-                // in cannon process, do not need to read one block from neighbor compute kernel
-                // instead, directly write tile in current core into next core (shifted)
-                // pay attention to the CB capacity: we first write into CB, then pop from CB, and finally push into CB for compute kernel to process
-                DPRINT << "src0 to core: " << src0_next_core_physical_x << ", " << src0_next_core_physical_y << ENDL();
-                DPRINT << "src1 to core: " << src1_next_core_physical_x << ", " << src1_next_core_physical_y << ENDL();
+                    // in cannon process, do not need to read one block from neighbor compute kernel
+                    // instead, directly write tile in current core into next core (shifted)
+                    // pay attention to the CB capacity: we first write into CB, then pop from CB, and finally push into CB for compute kernel to process
+                    DPRINT << "src0 to core: " << src0_next_core_physical_x << ", " << src0_next_core_physical_y << ENDL();
+                    DPRINT << "src1 to core: " << src1_next_core_physical_x << ", " << src1_next_core_physical_y << ENDL();
+                }
 
                 for (uint32_t shift_num = 0; shift_num < Mt / per_core_M - 1; ++shift_num) {
-                    DeviceZoneScopedN("TEST-reader_bmm_cannon_shift");
+                    PACK(DeviceZoneScopedN("TEST-reader_bmm_cannon_shift"));
                     // cb_reserve_back(tt::CB::c_in0, src0_block_tiles);
                     // cb_reserve_back(tt::CB::c_in1, src1_block_tiles);
                     cb_reserve_back(tt::CB::c_in0, src0_sharded_tiles);
