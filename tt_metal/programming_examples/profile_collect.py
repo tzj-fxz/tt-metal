@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 import itertools
+import matplotlib.pyplot as plt
 
 def max_min_diff(group):
     return group.max() - group.min()
@@ -52,10 +53,81 @@ def profile_cannon(df):
     print("reader shift cycles", max_cycles)
 
 def profile_noc(df):
-    df_noc_send = df[df["  zone name"] == "TEST-NoC-sender-notile"]
+    df_noc_send = df[df["  zone name"] == "TEST-NoC-sender-bandwidth"]
     df_noc_send = df_noc_send[[" core_x", " core_y", " time[cycles since reset]"]]
     df_noc_send_group = df_noc_send.groupby([" core_x", " core_y"])
     df_noc_send_cycle = df_noc_send_group.apply(max_min_diff)
     print(df_noc_send_cycle)
 
+def profile_noc_warmup(df):
+    df_noc_send = df[df["  zone name"] == "TEST-NoC-sender-warmup"]
+    df_noc_send = df_noc_send[[" core_x", " core_y", " time[cycles since reset]"]]
+    df_noc_send_group = df_noc_send.groupby([" core_x", " core_y"])
+    df_noc_send_cycle = df_noc_send_group.apply(max_min_diff)
+    print(df_noc_send_cycle)
+
+def profile_noc_dram(df):
+    df_noc_send = df[df["  zone name"] == "TEST-NoC-sender_dram"]
+    df_noc_send = df_noc_send[[" core_x", " core_y", " time[cycles since reset]"]]
+    df_noc_send_group = df_noc_send.groupby([" core_x", " core_y"])
+    df_noc_send_cycle = df_noc_send_group.apply(max_min_diff)
+    print(df_noc_send_cycle)
+
+def profile_noc_fig(df):
+    # Convert cycles to milliseconds
+    df['time_ms'] = df[' time[cycles since reset]']
+
+    # Create a unique identifier for each core
+    # df['core_id'] = 'Core(' + df[' core_x'].astype(str) + ',' + df[' core_y'].astype(str) + ')'
+    df['core_id'] = 'Core_x:' + df[' core_x'].astype(str) + ', Core_y:' + df[' core_y'].astype(str)
+
+    # Create figure
+    plt.figure(figsize=(15, 10))
+
+    # Create a timeline plot
+    for processor in ['BRISC']:
+        processor_data = df[df[' RISC processor type'] == processor]
+        
+        # Get unique zones for this processor
+        zones = processor_data['  zone name'].unique()
+        zones = [zone for zone in zones if zone.startswith("TEST")]
+        colors = plt.cm.rainbow(np.linspace(0, 1, len(zones)))
+        zone_colors = dict(zip(zones, colors))
+
+        # Create subplot
+        plt.subplot(1, 1, 1 if processor == 'BRISC' else 1)
+        
+        # Plot each zone's begin and end times
+        for i, core in enumerate(sorted(processor_data['core_id'].unique())):
+            core_data = processor_data[processor_data['core_id'] == core]
+            # Calculate offset for each zone
+            zone_offsets = {zone: idx * 0.2 for idx, zone in enumerate(zones)}
+            for zone in zones:
+                zone_data = core_data[core_data['  zone name'] == zone]
+                begins = zone_data[zone_data[' zone phase'] == 'begin']['time_ms']
+                ends = zone_data[zone_data[' zone phase'] == 'end']['time_ms']
+                
+                if not begins.empty and not ends.empty:
+                    y_pos = i + zone_offsets[zone]
+                    plt.hlines(y=y_pos, xmin=begins, xmax=ends, 
+                            label=zone if i == 0 else "",
+                            color=zone_colors[zone], 
+                            linewidth=8, alpha=0.5)
+        
+        plt.yticks(range(len(processor_data['core_id'].unique())), 
+                sorted(processor_data['core_id'].unique()))
+        plt.title(f'{processor} Processor Timeline')
+        plt.xlabel('Cycle')
+        plt.ylabel('Core ID')
+        plt.grid(True, alpha=0.3)
+        if processor == 'BRISC':
+            plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
+
+    plt.tight_layout()
+    plt.show()
+    plt.savefig("noc.png")
+
+profile_noc_dram(df)
+profile_noc_warmup(df)
 profile_noc(df)
+profile_noc_fig(df)

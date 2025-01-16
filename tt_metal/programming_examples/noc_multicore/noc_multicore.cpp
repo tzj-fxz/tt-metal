@@ -53,7 +53,7 @@ int main(int argc, char **argv) {
             program,
             "tt_metal/programming_examples/noc_multicore/kernels/noc_sender_notile.cpp",
             all_cores,
-            DataMovementConfig{.processor = DataMovementProcessor::RISCV_0, .noc = NOC::RISCV_1_default, .noc_mode = NOC_MODE::DM_DEDICATED_NOC}
+            DataMovementConfig{.processor = DataMovementProcessor::RISCV_0, .noc = NOC::RISCV_0_default, .noc_mode = NOC_MODE::DM_DEDICATED_NOC}
         );
 
         KernelHandle dram_receiver_kernel_id = CreateKernel(
@@ -66,13 +66,13 @@ int main(int argc, char **argv) {
         tt::DataFormat cb_data_format = tt::DataFormat::Float16_b;
         MathFidelity math_fidelity = MathFidelity::HiFi4;
 
-        constexpr uint32_t single_tile_size = 2 * (32 * 32);
-        constexpr uint32_t dram_tiles = 1 << 10;
-        constexpr uint32_t cb_tiles = 1;
+        constexpr uint32_t single_tile_size = 1 << 16;
+        constexpr uint32_t dram_tiles = 1;
+        constexpr uint32_t cb_tiles = 1 << 2;
         constexpr uint32_t dram_buffer_size = single_tile_size * dram_tiles;
         constexpr uint32_t cb_buffer_size = single_tile_size * cb_tiles;
         constexpr uint32_t repeat = 1 << 4;
-        constexpr uint32_t bandwidth_size = (1 << 17);
+        constexpr uint32_t bandwidth_size = (1 << 16);
         tt::tt_metal::InterleavedBufferConfig dram_config{
                     .device = device,
                     .size = dram_buffer_size,
@@ -101,14 +101,14 @@ int main(int argc, char **argv) {
         */
         std::vector<uint32_t> input_vec = create_random_vector_of_bfloat16(
             dram_buffer_size, 100, std::chrono::system_clock::now().time_since_epoch().count());
-        EnqueueWriteBuffer(cq, input_dram_buffer, input_vec, false);
+        // EnqueueWriteBuffer(cq, input_dram_buffer, input_vec, false);
 
         for (uint32_t i = 0; i < core_size_x; ++i) {
             for (uint32_t j = 0; j < core_size_y; ++j) {
                 CoreCoord core = {start_core_x + i, start_core_y + j};
                 // down or right
-                CoreCoord core_right = {(start_core_x + (i - 1) % core_size_x) % 8, (start_core_y + j) % 8};
-                CoreCoord core_down = {(start_core_x + i) % 8, (start_core_y + (j + 1) % core_size_y) % 8};
+                CoreCoord core_right = {(start_core_x + (i + core_size_x + 1) % core_size_x) % 8, (start_core_y + j) % 8};
+                CoreCoord core_down = {(start_core_x + i) % 8, (start_core_y + (j + core_size_y + 1) % core_size_y) % 8};
                 auto core_physical = device->worker_core_from_logical_core(core);
                 auto core_right_physical = device->worker_core_from_logical_core(core_right);
                 auto core_down_physical = device->worker_core_from_logical_core(core_down);
@@ -124,7 +124,9 @@ int main(int argc, char **argv) {
                     static_cast<uint32_t>(input_dram_buffer->noc_coordinates().y),
                     bandwidth_size,
                     core_down_physical.x,
-                    core_down_physical.y
+                    core_down_physical.y,
+                    core.x,
+                    core.y
                 };
                 const std::vector<uint32_t> receiver_args = {
                     output_dram_buffer->address(),
