@@ -53,8 +53,8 @@ void MAIN {
                 bool spill = num_block_x > 0;
                 bool enable_reload = false;
                 for (uint32_t shift_num = 0; shift_num < num_block_x; ++shift_num) {
-                    // cb_wait_front(tt::CB::c_in0, in0_num_tiles);
-                    // cb_wait_front(tt::CB::c_in1, in1_num_tiles);
+                    cb_wait_front(tt::CB::c_in0, in0_num_tiles);
+                    cb_wait_front(tt::CB::c_in1, in1_num_tiles);
                     // {
                     //     UNPACK(DeviceZoneScopedN("TEST-bmm-shift"));
                     //     // PACK(DeviceZoneScopedN("TEST-bmm-shift"));
@@ -75,8 +75,8 @@ void MAIN {
                     //         }
                     //     }
                     // }
-                    // cb_pop_front(tt::CB::c_in0, in0_num_tiles);
-                    // cb_pop_front(tt::CB::c_in1, in1_num_tiles);
+                    cb_pop_front(tt::CB::c_in0, in0_num_tiles);
+                    cb_pop_front(tt::CB::c_in1, in1_num_tiles);
                 }
             }
         }
