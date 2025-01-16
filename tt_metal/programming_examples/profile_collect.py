@@ -52,6 +52,60 @@ def profile_cannon(df):
     max_cycles = max(df_diff)
     print("reader shift cycles", max_cycles)
 
+def profile_cannon_fig(df):
+    # Convert cycles to milliseconds
+    df['time_ms'] = df[' time[cycles since reset]']
+
+    # Create a unique identifier for each core
+    # df['core_id'] = 'Core(' + df[' core_x'].astype(str) + ',' + df[' core_y'].astype(str) + ')'
+    df['core_id'] = 'Core_x:' + df[' core_x'].astype(str) + ', Core_y:' + df[' core_y'].astype(str)
+
+    # Create figure
+    plt.figure(figsize=(15, 20))
+
+    # Create a timeline plot
+    for processor in ['NCRISC']:
+        processor_data = df[df[' RISC processor type'] == processor]
+        
+        # Get unique zones for this processor
+        zones = processor_data['  zone name'].unique()
+        zones = [zone for zone in zones if zone.startswith("TEST-reader_bmm_cannon")]
+
+        # Create subplot
+        plt.subplot(1, 1, 1 if processor == 'BRISC' else 1)
+        
+        # Plot each zone's begin and end times
+        for i, core in enumerate(sorted(processor_data['core_id'].unique())):
+            core_data = processor_data[processor_data['core_id'] == core]
+            # Calculate offset for each zone
+            zone_offsets = {zone: idx * 0.2 for idx, zone in enumerate(zones)}
+            for zone in zones:
+                zone_data = core_data[core_data['  zone name'] == zone]
+                begins = zone_data[zone_data[' zone phase'] == 'begin']['time_ms']
+                ends = zone_data[zone_data[' zone phase'] == 'end']['time_ms']
+                colors = plt.cm.rainbow(np.linspace(0, 1, len(begins)))
+                
+                if not begins.empty and not ends.empty:
+                    for t, (begin, end) in enumerate(zip(begins, ends)):
+                        y_pos = i + zone_offsets[zone]
+                        plt.hlines(y=y_pos, xmin=begin, xmax=end, 
+                                label=zone if i == 0 else "",
+                                color=colors[t], 
+                                linewidth=8, alpha=0.5)
+        
+        plt.yticks(range(len(processor_data['core_id'].unique())), 
+                sorted(processor_data['core_id'].unique()))
+        plt.title(f'{processor} Processor Timeline')
+        plt.xlabel('Cycle')
+        plt.ylabel('Core ID')
+        plt.grid(True, alpha=0.3)
+        if processor == 'NCRISC':
+            plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
+
+    plt.tight_layout()
+    plt.show()
+    plt.savefig("noc.png")
+
 def profile_noc(df):
     df_noc_send = df[df["  zone name"] == "TEST-NoC-sender-bandwidth"]
     df_noc_send = df_noc_send[[" core_x", " core_y", " time[cycles since reset]"]]
@@ -127,7 +181,10 @@ def profile_noc_fig(df):
     plt.show()
     plt.savefig("noc.png")
 
-profile_noc_dram(df)
-profile_noc_warmup(df)
-profile_noc(df)
-profile_noc_fig(df)
+if __name__ == "__main__":
+    profile_cannon(df)
+    profile_cannon_fig(df)
+    # profile_noc_dram(df)
+    # profile_noc_warmup(df)
+    # profile_noc(df)
+    # profile_noc_fig(df)

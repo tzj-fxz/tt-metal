@@ -175,13 +175,13 @@ void matmul_cannon(std::vector<bfloat16>& a, std::vector<bfloat16>& b, std::vect
         program,
         "tt_metal/programming_examples/matmul_common/kernels/dataflow/reader_bmm_cannon_semaphore.cpp",
         all_cores,
-        tt_metal::DataMovementConfig{.processor = tt_metal::DataMovementProcessor::RISCV_1, .noc = tt_metal::NOC::RISCV_1_default, .compile_args = reader_compile_time_args}
+        tt_metal::DataMovementConfig{.processor = tt_metal::DataMovementProcessor::RISCV_1, .noc = tt_metal::NOC::RISCV_0_default, .compile_args = reader_compile_time_args}
     );
     auto writer_kernel_cannon = tt_metal::CreateKernel(
         program,
         "tt_metal/programming_examples/matmul_common/kernels/dataflow/writer_bmm_cannon.cpp",
         all_cores,
-        tt_metal::DataMovementConfig{.processor = tt_metal::DataMovementProcessor::RISCV_0, .noc = tt_metal::NOC::RISCV_0_default, .compile_args = writer_compile_time_args}
+        tt_metal::DataMovementConfig{.processor = tt_metal::DataMovementProcessor::RISCV_0, .noc = tt_metal::NOC::RISCV_1_default, .compile_args = writer_compile_time_args}
     );
     std::vector<uint32_t> compute_compile_time_args = {
         (std::uint32_t) Mt,
@@ -217,10 +217,10 @@ void matmul_cannon(std::vector<bfloat16>& a, std::vector<bfloat16>& b, std::vect
             // CoreCoord src1_next_core = {(std::size_t) (core_x + num_cores_x + 1) % num_cores_x, (std::size_t) core_y};
             // CoreCoord src0_prev_core = {(std::size_t) core_x, (std::size_t) (core_y + num_cores_y - 1) % num_cores_y};
             // CoreCoord src1_prev_core = {(std::size_t) (core_x + num_cores_x - 1) % num_cores_x, (std::size_t) core_y};
-            CoreCoord src0_next_core = {(std::size_t) (core_x + num_core_x - 1) % num_cores_x, (std::size_t) core_y};
-            CoreCoord src0_prev_core = {(std::size_t) (core_x + num_core_x + 1) % num_cores_x, (std::size_t) core_y};
-            CoreCoord src1_next_core = {(std::size_t) core_x, (std::size_t) (core_y + num_core_y - 1) % num_cores_y};
-            CoreCoord src1_prev_core = {(std::size_t) core_x, (std::size_t) (core_y + num_core_y + 1) % num_cores_y};
+            CoreCoord src1_next_core = {(std::size_t) (core_x + num_cores_x + 1) % num_cores_x, (std::size_t) core_y};
+            CoreCoord src1_prev_core = {(std::size_t) (core_x + num_cores_x - 1) % num_cores_x, (std::size_t) core_y};
+            CoreCoord src0_next_core = {(std::size_t) core_x, (std::size_t) (core_y + num_cores_y + 1) % num_cores_y};
+            CoreCoord src0_prev_core = {(std::size_t) core_x, (std::size_t) (core_y + num_cores_y - 1) % num_cores_y};
 
             auto core_physical = device->worker_core_from_logical_core(core);
             auto src0_next_core_physical = device->worker_core_from_logical_core(src0_next_core);
