@@ -2,6 +2,7 @@ import pandas as pd
 import numpy as np
 import itertools
 import matplotlib.pyplot as plt
+import argparse
 
 def max_min_diff(group):
     return group.max() - group.min()
@@ -11,46 +12,70 @@ file_path = "/home/zhengju.tang/tt-metal/generated/profiler/.logs/profile_log_de
 df = pd.read_csv(file_path, skiprows=1)
 print(df.columns)
 
-max_time = max(df[" time[cycles since reset]"])
-min_time = min(df[" time[cycles since reset]"])
-print("max time", max_time)
-print("min time", min_time)
-print("whole time", max_time-min_time)
-
 def profile_cannon(df):
-    # df_bmm_shift_unpack = df_bmm_shift[df[" RISC processor type"] == "TRISC_0"]
-    # df_bmm_shift_unpack_begin = df_bmm_shift_unpack[df[" zone phase"] == "begin"].reset_index()
-    # df_bmm_shift_math = df_bmm_shift[df[" RISC processor type"] == "TRISC_2"]
-    # df_bmm_shift_math_end = df_bmm_shift_math[df[" zone phase"] == "end"].reset_index()
-    # result = df_bmm_shift_math_end[" time[cycles since reset]"] - df_bmm_shift_unpack_begin[" time[cycles since reset]"]
-    # print(result)
-    # print("len result: ", len(result))
-    # print(result.mean())
+    # every shift cycle
     df_core = df[[" core_x", " core_y"]]
     df_core = df_core.drop_duplicates()
     df_core_repeated = df_core.loc[np.repeat(df_core.index, 6)].reset_index(drop=True)
-    print(df_core_repeated)
 
     df_reader_all = df[df["  zone name"] == "TEST-reader_bmm_cannon_shift"]
-    df_reader_group = df_reader_all.groupby([" core_x", " core_y"])
     df_reader_begin = df_reader_all[df_reader_all[" zone phase"] == "begin"].reset_index()
     df_reader_end = df_reader_all[df_reader_all[" zone phase"] == "end"].reset_index()
-    result = df_reader_end[" time[cycles since reset]"] - df_reader_begin[" time[cycles since reset]"]
+    df_pack_all = df[df["  zone name"] == "TEST-bmm-shift-pack"]
+    df_pack_begin = df_pack_all[df_pack_all[" zone phase"] == "begin"].reset_index()
+    df_pack_begin_filter = df_pack_begin[~(df_pack_begin.index % 7 == 6)].reset_index()
+    df_pack_end = df_pack_all[df_pack_all[" zone phase"] == "end"].reset_index()
+    result = df_reader_end[" time[cycles since reset]"] - df_pack_begin_filter[" time[cycles since reset]"].combine(df_reader_begin[" time[cycles since reset]"], max)
 
-    # in place modify
-    df_core_repeated["cycles"] = result
+    # average shift cycle
+    df_core_repeated["shift-cycles"] = result
+    df_core_repeated.to_csv("output_reader_shift.csv", index=False)
+
+    grouped_df_reader_shift = df_core_repeated.groupby([" core_x", " core_y"])
+    df_cycles = grouped_df_reader_shift["shift-cycles"].mean()
+    df_cycles.to_csv("output_shift.csv", index=False)
+    print(df_cycles)
+    max_cycles_shift = max(df_cycles)
+
+    
+    # every shift cycle
+    df_core = df[[" core_x", " core_y"]]
+    df_core = df_core.drop_duplicates()
+    df_core_repeated = df_core.loc[np.repeat(df_core.index, 6)].reset_index(drop=True)
+
+    df_math_all = df[df["  zone name"] == "TEST-bmm-shift-math"]
+    df_math_begin = df_math_all[df_math_all[" zone phase"] == "begin"].reset_index()
+    df_math_end = df_math_all[df_math_all[" zone phase"] == "end"].reset_index()
+    df_unpack_all = df[df["  zone name"] == "TEST-bmm-shift-unpack"]
+    df_unpack_begin = df_unpack_all[df_unpack_all[" zone phase"] == "begin"].reset_index()
+    df_unpack_end = df_unpack_all[df_unpack_all[" zone phase"] == "end"].reset_index()
+    result = df_math_end[" time[cycles since reset]"] - df_unpack_begin[" time[cycles since reset]"].combine(df_math_begin[" time[cycles since reset]"], max)
+
+    # average shift cycle
+    df_core_repeated["math-cycles"] = result
     print(df_core_repeated)
     df_core_repeated.to_csv("output_reader_shift.csv", index=False)
 
-    df_reader_shift = df[df["  zone name"] == "TEST-reader_bmm_cannon_shift"]
-    grouped_df_reader_shift = df_reader_shift.groupby([" core_x", " core_y", " RISC processor type", " zone phase"])
-    df_cycles = grouped_df_reader_shift[" time[cycles since reset]"].mean().rename("cycles")
-    grouped_df_bmm_risc = df_cycles.groupby([" core_x", " core_y", " RISC processor type"])
-    df_diff = grouped_df_bmm_risc.apply(max_min_diff)
-    df_diff.to_csv("output_shift.csv", index=False)
-    print(df_diff)
-    max_cycles = max(df_diff)
-    print("reader shift cycles", max_cycles)
+    grouped_df_math_shift = df_core_repeated.groupby([" core_x", " core_y"])
+    df_cycles = grouped_df_math_shift["math-cycles"].mean()
+    df_cycles.to_csv("output_bmm.csv", index=False)
+    print(df_cycles)
+    max_cycles_math = max(df_cycles)
+
+    # average bmm cycle
+    # df_compute_bmm = df[df["  zone name"] == "TEST-bmm-shift-unpack"]
+    # df_compute_bmm = df_compute_bmm[df_compute_bmm[" RISC processor type"] == "TRISC_0"]
+    # grouped_df_compute_bmm = df_compute_bmm.groupby([" core_x", " core_y", " RISC processor type", " zone phase"])
+    # df_cycles_bmm = grouped_df_compute_bmm[" time[cycles since reset]"].mean().rename("cycles")
+    # grouped_df_bmm = df_cycles_bmm.groupby([" core_x", " core_y", " RISC processor type"])
+    # df_diff_bmm = grouped_df_bmm.apply(max_min_diff)
+    # df_diff_bmm.to_csv("output_bmm.csv", index=False)
+    # print(df_diff_bmm)
+    # max_cycles_bmm = max(df_diff_bmm)
+
+    print("reader shift cycles", max_cycles_shift)
+    print("reader bmm cycles", max_cycles_math)
+
 
 def profile_cannon_fig(df):
     # Convert cycles to milliseconds
@@ -61,30 +86,31 @@ def profile_cannon_fig(df):
     df['core_id'] = 'Core_x:' + df[' core_x'].astype(str) + ', Core_y:' + df[' core_y'].astype(str)
 
     # Create figure
-    plt.figure(figsize=(15, 20))
+    plt.figure(figsize=(15, 30))
 
     # Create a timeline plot
-    for processor in ['NCRISC', 'TRISC_0']:
-        processor_data = df[df[' RISC processor type'] == processor]
+    for processor in ['NCRISC', 'TRISC', 'TRISC', 'TRISC']:
+        processor_data = df[df[' RISC processor type'].str.startswith(processor)]
         
         # Get unique zones for this processor
         zones = processor_data['  zone name'].unique()
         # zones = ["TEST-reader_bmm_cannon_initial", "TEST-reader_bmm_cannon_shift", "TEST-bmm-shift"]
-        zones = ["TEST-reader_bmm_cannon_shift", "TEST-bmm-shift"]
+        zones = ["TEST-reader_bmm_cannon_shift", "TEST-bmm-shift-unpack", "TEST-bmm-shift-math", "TEST-bmm-shift-pack"]
         zone_color = {
             "TEST-reader_bmm_cannon_shift": 0,
-            "TEST-bmm-shift": 1,
-            # "TEST-reader_bmm_cannon_initial": 2
+            "TEST-bmm-shift-unpack": 1,
+            "TEST-bmm-shift-math": 2,
+            "TEST-bmm-shift-pack": 3
         }
 
         # Create subplot
-        plt.subplot(1, 1, 1 if processor == 'BRISC' else 1)
+        plt.subplot(1, 1, 1)
         
         # Plot each zone's begin and end times
         for i, core in enumerate(sorted(processor_data['core_id'].unique())):
             core_data = processor_data[processor_data['core_id'] == core]
             # Calculate offset for each zone
-            zone_offsets = {zone: idx * 0.3 for idx, zone in enumerate(zones)}
+            zone_offsets = {zone: idx * 0.2 for idx, zone in enumerate(zones)}
             for zone in zones:
                 zone_data = core_data[core_data['  zone name'] == zone]
                 begins = zone_data[zone_data[' zone phase'] == 'begin']['time_ms']
@@ -94,10 +120,15 @@ def profile_cannon_fig(df):
                 if not begins.empty and not ends.empty:
                     for t, (begin, end) in enumerate(zip(begins, ends)):
                         y_pos = i + zone_offsets[zone]
-                        plt.hlines(y=y_pos, xmin=begin, xmax=end, 
+                        xmin = begin
+                        if (zone == "TEST-bmm-shift-math" or zone == "TEST-bmm-shift-pack") and t == 0:
+                            tmp_data = core_data[core_data['  zone name'] == 'TEST-bmm-shift-unpack']
+                            xmin = tmp_data[tmp_data[' zone phase'] == 'begin']['time_ms']
+                            xmin = xmin.iloc[0]
+                        plt.hlines(y=y_pos, xmin=xmin, xmax=end, 
                                 label=zone if i == 0 else "",
                                 color=colors[t * len(zones) + zone_color[zone]], 
-                                linewidth=8, alpha=0.5)
+                                linewidth=6, alpha=0.5)
         
         plt.yticks(range(len(processor_data['core_id'].unique())), 
                 sorted(processor_data['core_id'].unique()))
@@ -187,8 +218,18 @@ def profile_noc_fig(df):
     plt.show()
     plt.savefig("noc.png")
 
+
+def main():
+    parser = argparse.ArgumentParser(description="choose type to profile")
+    parser.add_argument('--mode', '-m', type=str, choices=['noc', 'cannon'], default='noc')
+    args = parser.parse_args()
+    if args.mode == 'noc':
+        profile_noc(df)
+        profile_noc_fig(df)
+    elif args.mode == 'cannon':
+        profile_cannon(df)
+        profile_cannon_fig(df)
+
+
 if __name__ == "__main__":
-    profile_noc(df)
-    profile_noc_fig(df)
-    # profile_cannon(df)
-    # profile_cannon_fig(df)
+    main()

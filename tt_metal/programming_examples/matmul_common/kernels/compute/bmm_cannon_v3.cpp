@@ -63,7 +63,9 @@ void MAIN {
                     {
                         cb_wait_front(tt::CB::c_in0, in0_num_tiles);
                         cb_wait_front(tt::CB::c_in1, in1_num_tiles);
-                        DeviceZoneScopedN("TEST-bmm-shift");
+                        UNPACK(DeviceZoneScopedN("TEST-bmm-shift-unpack"));
+                        MATH(DeviceZoneScopedN("TEST-bmm-shift-math"));
+                        PACK(DeviceZoneScopedN("TEST-bmm-shift-pack"));
                         DPRINT << num_block_x << ENDL();
                         bool last_out = (shift_num == (num_block_x - 1));
                         for (uint32_t subblock_m = 0; subblock_m < subblock_h; ++subblock_m) {
