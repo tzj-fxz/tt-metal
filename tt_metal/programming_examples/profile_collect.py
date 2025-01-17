@@ -64,12 +64,18 @@ def profile_cannon_fig(df):
     plt.figure(figsize=(15, 20))
 
     # Create a timeline plot
-    for processor in ['NCRISC']:
+    for processor in ['NCRISC', 'TRISC_0']:
         processor_data = df[df[' RISC processor type'] == processor]
         
         # Get unique zones for this processor
         zones = processor_data['  zone name'].unique()
-        zones = [zone for zone in zones if zone.startswith("TEST-reader_bmm_cannon")]
+        # zones = ["TEST-reader_bmm_cannon_initial", "TEST-reader_bmm_cannon_shift", "TEST-bmm-shift"]
+        zones = ["TEST-reader_bmm_cannon_shift", "TEST-bmm-shift"]
+        zone_color = {
+            "TEST-reader_bmm_cannon_shift": 0,
+            "TEST-bmm-shift": 1,
+            # "TEST-reader_bmm_cannon_initial": 2
+        }
 
         # Create subplot
         plt.subplot(1, 1, 1 if processor == 'BRISC' else 1)
@@ -78,19 +84,19 @@ def profile_cannon_fig(df):
         for i, core in enumerate(sorted(processor_data['core_id'].unique())):
             core_data = processor_data[processor_data['core_id'] == core]
             # Calculate offset for each zone
-            zone_offsets = {zone: idx * 0.2 for idx, zone in enumerate(zones)}
+            zone_offsets = {zone: idx * 0.3 for idx, zone in enumerate(zones)}
             for zone in zones:
                 zone_data = core_data[core_data['  zone name'] == zone]
                 begins = zone_data[zone_data[' zone phase'] == 'begin']['time_ms']
                 ends = zone_data[zone_data[' zone phase'] == 'end']['time_ms']
-                colors = plt.cm.rainbow(np.linspace(0, 1, len(begins)))
+                colors = plt.cm.rainbow(np.linspace(0, 1, len(zones) * len(begins)))
                 
                 if not begins.empty and not ends.empty:
                     for t, (begin, end) in enumerate(zip(begins, ends)):
                         y_pos = i + zone_offsets[zone]
                         plt.hlines(y=y_pos, xmin=begin, xmax=end, 
                                 label=zone if i == 0 else "",
-                                color=colors[t], 
+                                color=colors[t * len(zones) + zone_color[zone]], 
                                 linewidth=8, alpha=0.5)
         
         plt.yticks(range(len(processor_data['core_id'].unique())), 
@@ -99,8 +105,8 @@ def profile_cannon_fig(df):
         plt.xlabel('Cycle')
         plt.ylabel('Core ID')
         plt.grid(True, alpha=0.3)
-        if processor == 'NCRISC':
-            plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
+        # if processor == 'NCRISC':
+        plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
 
     plt.tight_layout()
     plt.show()
@@ -182,9 +188,7 @@ def profile_noc_fig(df):
     plt.savefig("noc.png")
 
 if __name__ == "__main__":
-    profile_cannon(df)
-    profile_cannon_fig(df)
-    # profile_noc_dram(df)
-    # profile_noc_warmup(df)
-    # profile_noc(df)
-    # profile_noc_fig(df)
+    profile_noc(df)
+    profile_noc_fig(df)
+    # profile_cannon(df)
+    # profile_cannon_fig(df)

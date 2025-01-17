@@ -60,11 +60,10 @@ void MAIN {
                 bool spill = num_block_x > 0;
                 bool enable_reload = false;
                 for (uint32_t shift_num = 0; shift_num < num_block_x; ++shift_num) {
-                    cb_wait_front(tt::CB::c_in0, in0_num_tiles);
-                    cb_wait_front(tt::CB::c_in1, in1_num_tiles);
                     {
-                        UNPACK(DeviceZoneScopedN("TEST-bmm-shift"));
-                        PACK(DeviceZoneScopedN("TEST-bmm-shift"));
+                        cb_wait_front(tt::CB::c_in0, in0_num_tiles);
+                        cb_wait_front(tt::CB::c_in1, in1_num_tiles);
+                        DeviceZoneScopedN("TEST-bmm-shift");
                         DPRINT << num_block_x << ENDL();
                         bool last_out = (shift_num == (num_block_x - 1));
                         for (uint32_t subblock_m = 0; subblock_m < subblock_h; ++subblock_m) {
@@ -126,9 +125,9 @@ void MAIN {
                         if (spill) {
                             enable_reload = true;
                         }
+                        cb_pop_front(tt::CB::c_in0, in0_num_tiles);
+                        cb_pop_front(tt::CB::c_in1, in1_num_tiles);
                     }
-                    cb_pop_front(tt::CB::c_in0, in0_num_tiles);
-                    cb_pop_front(tt::CB::c_in1, in1_num_tiles);
                 }
             }
         }
