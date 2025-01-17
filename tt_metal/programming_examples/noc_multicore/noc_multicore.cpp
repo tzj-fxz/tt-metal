@@ -66,9 +66,9 @@ int main(int argc, char **argv) {
         tt::DataFormat cb_data_format = tt::DataFormat::Float16_b;
         MathFidelity math_fidelity = MathFidelity::HiFi4;
 
-        constexpr uint32_t single_tile_size = 1 << 16;
-        constexpr uint32_t dram_tiles = 1;
-        constexpr uint32_t cb_tiles = 1 << 2;
+        constexpr uint32_t single_tile_size = 1 << 11;
+        constexpr uint32_t dram_tiles = 1 << 5;
+        constexpr uint32_t cb_tiles = 1 << 5;
         constexpr uint32_t dram_buffer_size = single_tile_size * dram_tiles;
         constexpr uint32_t cb_buffer_size = single_tile_size * cb_tiles;
         constexpr uint32_t repeat = 1 << 4;
@@ -79,6 +79,18 @@ int main(int argc, char **argv) {
                     .page_size = single_tile_size,
                     .buffer_type = tt::tt_metal::BufferType::DRAM
         };
+        
+        std::vector<uint32_t> compute_compile_time_args = {
+            (std::uint32_t) single_tile_size,
+            (std::uint32_t) cb_tiles
+        };
+
+        KernelHandle dram_compute_kernel_id = CreateKernel(
+            program,
+            "tt_metal/programming_examples/noc_multicore/kernels/noc_compute.cpp",
+            all_cores,
+            tt_metal::ComputeConfig{.compile_args = compute_compile_time_args}
+        );
 
         auto input_dram_buffer = CreateBuffer(dram_config);
         const uint32_t input_dram_buffer_addr = input_dram_buffer->address();

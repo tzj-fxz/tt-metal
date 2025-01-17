@@ -27,7 +27,8 @@ void kernel_main() {
     std::uint32_t batch = dram_tiles / cb_tiles;
 
     {
-        // cb_wait_front(tt::CB::c_in0, cb_tiles);
         DeviceZoneScopedN("TEST-NoC-receiver");
+        // cb_wait_front(tt::CB::c_in0, cb_tiles);
+        // cb_pop_front(tt::CB::c_in0, cb_tiles);
     }
 }

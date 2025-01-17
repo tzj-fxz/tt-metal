@@ -9,7 +9,7 @@
 #include "debug/dprint.h"
 
 void kernel_main() {
-    DeviceZoneScopedN("TEST-reader_bmm_cannon_all");
+    DeviceZoneScopedN("TEST-reader_bmm_all");
 
     constexpr bool src0_is_dram = get_compile_time_arg_val(0) == 1;
     constexpr bool src1_is_dram = get_compile_time_arg_val(1) == 1;
@@ -108,16 +108,26 @@ void kernel_main() {
                     src0_start_tile_id += dram_shard_h * dram_shard_x * Kt;
                     for (uint32_t h = 0; h < dram_shard_x; ++h) {
                         for (uint32_t w = 0; w < per_core_K; ++w) {
-                            noc_async_read_tile(src0_start_tile_id + h * Kt + w, s0, l1_write_addr_in0);
-                            l1_write_addr_in0 += src0_tile_bytes;
+                            // disable DRAM ops to check NoC and TFLOPS
+                            for (uint32_t t = 0; t < 32*32; ++t) {
+                                *(uint16_t *)(l1_write_addr_in0) = (uint16_t)1;
+                                l1_write_addr_in0 += 2;
+                            }
+                            // noc_async_read_tile(src0_start_tile_id + h * Kt + w, s0, l1_write_addr_in0);
+                            // l1_write_addr_in0 += src0_tile_bytes;
                         }
                     }
                     src1_start_tile_id = ((core_x + core_y) % num_block_x) * Nt * per_core_K + core_y * per_core_N;
                     src1_start_tile_id += dram_shard_w * dram_shard_y;
                     for (uint32_t h = 0; h < per_core_K; ++h) {
                         for (uint32_t w = 0; w < dram_shard_y; ++w) {
-                            noc_async_read_tile(src1_start_tile_id + h * Nt + w, s1, l1_write_addr_in1);
-                            l1_write_addr_in1 += src1_tile_bytes;
+                            // disable DRAM ops to check NoC and TFLOPS
+                            for (uint32_t t = 0; t < 32*32; ++t) {
+                                *(uint16_t *)(l1_write_addr_in1) = (uint16_t)1;
+                                l1_write_addr_in1 += 2;
+                            }
+                            // noc_async_read_tile(src1_start_tile_id + h * Nt + w, s1, l1_write_addr_in1);
+                            // l1_write_addr_in1 += src1_tile_bytes;
                         }
                     }
                     noc_async_read_barrier();
@@ -133,7 +143,7 @@ void kernel_main() {
                 }
 
                 for (uint32_t shift_num = 0; shift_num < Mt / per_core_M - 1; ++shift_num) {
-                    PACK(DeviceZoneScopedN("TEST-reader_bmm_cannon_shift"));
+                    DeviceZoneScopedN("TEST-reader_bmm_cannon_shift");
                     // cb_reserve_back(tt::CB::c_in0, src0_block_tiles);
                     // cb_reserve_back(tt::CB::c_in1, src1_block_tiles);
                     cb_reserve_back(tt::CB::c_in0, src0_sharded_tiles);

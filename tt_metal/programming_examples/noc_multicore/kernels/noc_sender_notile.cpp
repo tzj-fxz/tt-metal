@@ -39,17 +39,17 @@ void kernel_main() {
     std::uint32_t l1_write_addr_in0 = get_write_ptr(tt::CB::c_in0);
     std::uint32_t in0_start_addr = l1_write_addr_in0;
 
-    // for (uint32_t i = 0; i < bandwidth_size; ++i) {
-    //     *(uint32_t *)(l1_write_addr_in0) = (uint16_t)1;
-    //     ++l1_write_addr_in0;
-    // }
-
-    {
-        DeviceZoneScopedN("TEST-NoC-sender_dram");
-        noc_async_read(dram_src_noc, l1_write_addr_in0, bandwidth_size);
-        noc_async_read_barrier();
-        l1_write_addr_in0 += bandwidth_size;
+    for (uint32_t i = 0; i < bandwidth_size; ++i) {
+        *(uint32_t *)(l1_write_addr_in0) = (uint16_t)1;
+        l1_write_addr_in0 += 2;
     }
+
+    // {
+    //     DeviceZoneScopedN("TEST-NoC-sender_dram");
+    //     noc_async_read(dram_src_noc, l1_write_addr_in0, bandwidth_size);
+    //     noc_async_read_barrier();
+    //     l1_write_addr_in0 += bandwidth_size;
+    // }
 
     // warm-up
     {
@@ -72,6 +72,7 @@ void kernel_main() {
     // test bandwidth
     {
         DeviceZoneScopedN("TEST-NoC-sender-bandwidth");
+        cb_reserve_back(tt::CB::c_in0, cb_tiles);
         for (uint32_t r = 0; r < repeat; ++r) {
             for (uint32_t b = 0; b < batch; ++b) {
                 uint64_t noc_addr = get_noc_addr(dst_core_x, dst_core_y, l1_write_addr_in0);
@@ -82,5 +83,6 @@ void kernel_main() {
         }
 
         noc_async_write_barrier();
+        cb_push_back(tt::CB::c_in0, cb_tiles);
     }
 }
