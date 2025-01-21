@@ -38,7 +38,7 @@ def profile_cannon(df):
     max_cycles_shift = max(df_cycles)
 
     
-    # every shift cycle
+    # every math cycle
     df_core = df[[" core_x", " core_y"]]
     df_core = df_core.drop_duplicates()
     df_core_repeated = df_core.loc[np.repeat(df_core.index, 6)].reset_index(drop=True)
@@ -51,10 +51,10 @@ def profile_cannon(df):
     df_unpack_end = df_unpack_all[df_unpack_all[" zone phase"] == "end"].reset_index()
     result = df_math_end[" time[cycles since reset]"] - df_unpack_begin[" time[cycles since reset]"].combine(df_math_begin[" time[cycles since reset]"], max)
 
-    # average shift cycle
+    # average math cycle
     df_core_repeated["math-cycles"] = result
     print(df_core_repeated)
-    df_core_repeated.to_csv("output_reader_shift.csv", index=False)
+    df_core_repeated.to_csv("output_math_shift.csv", index=False)
 
     grouped_df_math_shift = df_core_repeated.groupby([" core_x", " core_y"])
     df_cycles = grouped_df_math_shift["math-cycles"].mean()
