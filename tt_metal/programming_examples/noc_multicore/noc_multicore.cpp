@@ -72,7 +72,7 @@ int main(int argc, char **argv) {
         constexpr uint32_t dram_buffer_size = single_tile_size * dram_tiles;
         constexpr uint32_t cb_buffer_size = single_tile_size * cb_tiles;
         constexpr uint32_t repeat = 1 << 4;
-        constexpr uint32_t bandwidth_size = (1 << 16);
+        constexpr uint32_t bandwidth_size = (1 << 17);
         tt::tt_metal::InterleavedBufferConfig dram_config{
                     .device = device,
                     .size = dram_buffer_size,
@@ -82,7 +82,8 @@ int main(int argc, char **argv) {
         
         std::vector<uint32_t> compute_compile_time_args = {
             (std::uint32_t) single_tile_size,
-            (std::uint32_t) cb_tiles
+            (std::uint32_t) cb_tiles,
+            (std::uint32_t) repeat
         };
 
         KernelHandle dram_compute_kernel_id = CreateKernel(

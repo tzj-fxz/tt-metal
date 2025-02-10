@@ -36,7 +36,7 @@ def profile_cannon(df):
     df_cycles.to_csv("output_shift.csv", index=False)
     print(df_cycles)
     max_cycles_shift = max(df_cycles)
-
+    avg_cycles_shift = df_cycles.mean()
     
     # every math cycle
     df_core = df[[" core_x", " core_y"]]
@@ -73,13 +73,14 @@ def profile_cannon(df):
     # print(df_diff_bmm)
     # max_cycles_bmm = max(df_diff_bmm)
 
-    print("reader shift cycles", max_cycles_shift)
+    print("reader shift cycles max", max_cycles_shift)
+    print("reader shift cycles avg", avg_cycles_shift)
     print("reader bmm cycles", max_cycles_math)
 
 
 def profile_cannon_fig(df):
-    # Convert cycles to milliseconds
-    df['time_ms'] = df[' time[cycles since reset]']
+    # Convert cycles to milliseconds (cycles)
+    df['time_cycle'] = df[' time[cycles since reset]']
 
     # Create a unique identifier for each core
     # df['core_id'] = 'Core(' + df[' core_x'].astype(str) + ',' + df[' core_y'].astype(str) + ')'
@@ -113,8 +114,8 @@ def profile_cannon_fig(df):
             zone_offsets = {zone: idx * 0.2 for idx, zone in enumerate(zones)}
             for zone in zones:
                 zone_data = core_data[core_data['  zone name'] == zone]
-                begins = zone_data[zone_data[' zone phase'] == 'begin']['time_ms']
-                ends = zone_data[zone_data[' zone phase'] == 'end']['time_ms']
+                begins = zone_data[zone_data[' zone phase'] == 'begin']['time_cycle']
+                ends = zone_data[zone_data[' zone phase'] == 'end']['time_cycle']
                 colors = plt.cm.rainbow(np.linspace(0, 1, len(zones) * len(begins)))
                 
                 if not begins.empty and not ends.empty:
@@ -123,7 +124,7 @@ def profile_cannon_fig(df):
                         xmin = begin
                         if (zone == "TEST-bmm-shift-math" or zone == "TEST-bmm-shift-pack") and t == 0:
                             tmp_data = core_data[core_data['  zone name'] == 'TEST-bmm-shift-unpack']
-                            xmin = tmp_data[tmp_data[' zone phase'] == 'begin']['time_ms']
+                            xmin = tmp_data[tmp_data[' zone phase'] == 'begin']['time_cycle']
                             xmin = xmin.iloc[0]
                         plt.hlines(y=y_pos, xmin=xmin, xmax=end, 
                                 label=zone if i == 0 else "",
@@ -141,7 +142,7 @@ def profile_cannon_fig(df):
 
     plt.tight_layout()
     plt.show()
-    plt.savefig("noc.png")
+    plt.savefig("cannon.png")
 
 def profile_noc(df):
     df_noc_send = df[df["  zone name"] == "TEST-NoC-sender-bandwidth"]
@@ -166,7 +167,7 @@ def profile_noc_dram(df):
 
 def profile_noc_fig(df):
     # Convert cycles to milliseconds
-    df['time_ms'] = df[' time[cycles since reset]']
+    df['time_cycle'] = df[' time[cycles since reset]']
 
     # Create a unique identifier for each core
     # df['core_id'] = 'Core(' + df[' core_x'].astype(str) + ',' + df[' core_y'].astype(str) + ')'
@@ -195,8 +196,8 @@ def profile_noc_fig(df):
             zone_offsets = {zone: idx * 0.2 for idx, zone in enumerate(zones)}
             for zone in zones:
                 zone_data = core_data[core_data['  zone name'] == zone]
-                begins = zone_data[zone_data[' zone phase'] == 'begin']['time_ms']
-                ends = zone_data[zone_data[' zone phase'] == 'end']['time_ms']
+                begins = zone_data[zone_data[' zone phase'] == 'begin']['time_cycle']
+                ends = zone_data[zone_data[' zone phase'] == 'end']['time_cycle']
                 
                 if not begins.empty and not ends.empty:
                     y_pos = i + zone_offsets[zone]

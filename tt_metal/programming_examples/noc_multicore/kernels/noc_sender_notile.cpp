@@ -40,7 +40,7 @@ void kernel_main() {
     std::uint32_t in0_start_addr = l1_write_addr_in0;
 
     for (uint32_t i = 0; i < bandwidth_size; ++i) {
-        *(uint32_t *)(l1_write_addr_in0) = (uint16_t)1;
+        *(uint32_t *)(l1_write_addr_in0) = (uint16_t)(i % 16);
         l1_write_addr_in0 += 2;
     }
 
@@ -58,7 +58,7 @@ void kernel_main() {
         for (uint32_t r = 0; r < repeat; ++r) {
             for (uint32_t b = 0; b < batch; ++b) {
                 uint64_t noc_addr = get_noc_addr(dst_core_x, dst_core_y, l1_write_addr_in0);
-                noc_async_write(l1_write_addr_in0, noc_addr, bandwidth_size);
+                noc_async_write(in0_start_addr, noc_addr, bandwidth_size);
                 // uint64_t noc_addr_down = get_noc_addr(dst_core_x_down, dst_core_y_down, in0_start_addr + bandwidth_size);
                 // noc_async_write(l1_write_addr_in0, noc_addr_down, bandwidth_size);
             }
@@ -66,7 +66,6 @@ void kernel_main() {
         noc_async_write_barrier();
         uint64_t end = get_timestamp();
         DPRINT << end - start << ENDL();
-        l1_write_addr_in0 += bandwidth_size;
     }
 
     // test bandwidth
@@ -76,13 +75,20 @@ void kernel_main() {
         for (uint32_t r = 0; r < repeat; ++r) {
             for (uint32_t b = 0; b < batch; ++b) {
                 uint64_t noc_addr = get_noc_addr(dst_core_x, dst_core_y, l1_write_addr_in0);
-                noc_async_write(l1_write_addr_in0, noc_addr, bandwidth_size);
+                noc_async_write(in0_start_addr, noc_addr, bandwidth_size);
+                // shift to not transfer same data to same location
+                if (r % 2 == 0) {
+                    in0_start_addr += bandwidth_size;
+                    l1_write_addr_in0 += (bandwidth_size);
+                } else {
+                    in0_start_addr -= bandwidth_size;
+                    l1_write_addr_in0 -= (bandwidth_size);
+                }
                 // uint64_t noc_addr_down = get_noc_addr(dst_core_x_down, dst_core_y_down, in0_start_addr + bandwidth_size);
                 // noc_async_write(l1_write_addr_in0, noc_addr_down, bandwidth_size);
+                noc_async_write_barrier();
+                cb_push_back(tt::CB::c_in0, cb_tiles);
             }
         }
-
-        noc_async_write_barrier();
-        cb_push_back(tt::CB::c_in0, cb_tiles);
     }
 }

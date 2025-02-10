@@ -21,8 +21,9 @@ constexpr uint32_t PER_CORE_N = 8;
 constexpr uint32_t PER_CORE_K = 8;
 constexpr uint32_t CORE_NUM_X = 7;
 constexpr uint32_t CORE_NUM_Y = 7;
-constexpr uint32_t DRAM_SHARD_X = 8; // each time load from DRAM/NoC: height
-constexpr uint32_t DRAM_SHARD_Y = 8; // each time load from DRAM/NoC: width
+constexpr uint32_t DRAM_SHARD_X = 4; // each time load from DRAM/NoC: height
+constexpr uint32_t DRAM_SHARD_Y = 4; // each time load from DRAM/NoC: width
+constexpr uint32_t DRAM_SHARD_K = 4;
 constexpr uint32_t SUBBLOCK_SIZE_H = 4;
 constexpr uint32_t SUBBLOCK_SIZE_W = 2;
 
@@ -106,8 +107,8 @@ void matmul_cannon(std::vector<bfloat16>& a, std::vector<bfloat16>& b, std::vect
     uint32_t dram_buffer_A_size = single_tile_size * Mt * Kt; // num_tiles of FP16_B, hard-coded in the reader/writer kernels
     uint32_t dram_buffer_B_size = single_tile_size * Nt * Kt; // num_tiles of FP16_B, hard-coded in the reader/writer kernels
     uint32_t dram_buffer_C_size = single_tile_size * Mt * Nt; // num_tiles of FP16_B, hard-coded in the reader/writer kernels
-    uint32_t in0_CB_size = in0_CB_tiles * single_tile_size * 2; // double buffer, but for dram load pipeline, should be four-fold buffer
-    uint32_t in1_CB_size = in1_CB_tiles * single_tile_size * 2; // double buffer, but for dram load pipeline, should be four-fold buffer
+    uint32_t in0_CB_size = in0_CB_tiles * single_tile_size * 4; // double buffer, but for dram load pipeline, should be four-fold buffer
+    uint32_t in1_CB_size = in1_CB_tiles * single_tile_size * 4; // double buffer, but for dram load pipeline, should be four-fold buffer
     uint32_t out_CB_size = out_CB_tiles * single_tile_size; // double buffer, but for dram load pipeline, should be four-fold buffer
     // dram buffer and circular buffer config for each core
     tt_metal::InterleavedBufferConfig dram_config_A{
@@ -175,11 +176,12 @@ void matmul_cannon(std::vector<bfloat16>& a, std::vector<bfloat16>& b, std::vect
         program,
         "tt_metal/programming_examples/matmul_common/kernels/dataflow/reader_bmm_cannon_semaphore.cpp",
         all_cores,
-        tt_metal::DataMovementConfig{.processor = tt_metal::DataMovementProcessor::RISCV_1, .noc = tt_metal::NOC::RISCV_0_default, .compile_args = reader_compile_time_args}
+        tt_metal::DataMovementConfig{.processor = tt_metal::DataMovementProcessor::RISCV_1, .noc = tt_metal::NOC::RISCV_0_default, .noc_mode = NOC_MODE::DM_DEDICATED_NOC, .compile_args = reader_compile_time_args}
     );
     auto writer_kernel_cannon = tt_metal::CreateKernel(
         program,
         "tt_metal/programming_examples/matmul_common/kernels/dataflow/writer_bmm_cannon.cpp",
+        // "tt_metal/programming_examples/matmul_common/kernels/dataflow/writer_bmm_cannon_dummy.cpp",
         all_cores,
         tt_metal::DataMovementConfig{.processor = tt_metal::DataMovementProcessor::RISCV_0, .noc = tt_metal::NOC::RISCV_1_default, .compile_args = writer_compile_time_args}
     );

@@ -17,9 +17,12 @@ void MAIN {
 
     uint32_t single_tile_size = get_compile_time_arg_val(0);
     uint32_t cb_tiles = get_compile_time_arg_val(1);
+    uint32_t repeat = get_compile_time_arg_val(2);
     DeviceZoneScopedN("TEST-NoC-compute");
 
-    cb_wait_front(tt::CB::c_in0, cb_tiles);
+    for (uint32_t i = 0; i < repeat; ++i) {
+        cb_wait_front(tt::CB::c_in0, cb_tiles);
+    }
     // for (uint32_t tile = 0; tile < cb_tiles; ++tile) {
     //     copy_tile_init();
     //     tile_regs_acquire();
