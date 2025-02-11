@@ -44,6 +44,8 @@ void kernel_main() {
     uint32_t src1_prev_core_physical_y = get_arg_val<uint32_t>(27);
     uint32_t dram_shard_x = get_arg_val<uint32_t>(28);
     uint32_t dram_shard_y = get_arg_val<uint32_t>(29);
+    uint32_t core_physical_x = get_arg_val<uint32_t>(30);
+    uint32_t core_physical_y = get_arg_val<uint32_t>(31);
 
     // DPRINT << "core: " << core_x + 1 << ", " << core_y + 1 << ENDL();
     volatile tt_l1_ptr uint32_t* in0_sender_semaphore_addr_ptr = reinterpret_cast<volatile tt_l1_ptr uint32_t*>(in0_sender_semaphore_addr);

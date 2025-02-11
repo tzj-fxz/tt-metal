@@ -107,9 +107,9 @@ void matmul_cannon(std::vector<bfloat16>& a, std::vector<bfloat16>& b, std::vect
     uint32_t dram_buffer_A_size = single_tile_size * Mt * Kt; // num_tiles of FP16_B, hard-coded in the reader/writer kernels
     uint32_t dram_buffer_B_size = single_tile_size * Nt * Kt; // num_tiles of FP16_B, hard-coded in the reader/writer kernels
     uint32_t dram_buffer_C_size = single_tile_size * Mt * Nt; // num_tiles of FP16_B, hard-coded in the reader/writer kernels
-    uint32_t in0_CB_size = in0_CB_tiles * single_tile_size * 4; // double buffer, but for dram load pipeline, should be four-fold buffer
-    uint32_t in1_CB_size = in1_CB_tiles * single_tile_size * 4; // double buffer, but for dram load pipeline, should be four-fold buffer
-    uint32_t out_CB_size = out_CB_tiles * single_tile_size; // double buffer, but for dram load pipeline, should be four-fold buffer
+    uint32_t in0_CB_size = in0_CB_tiles * single_tile_size * 2; // double buffer, but for dram load pipeline, should be four-fold buffer
+    uint32_t in1_CB_size = in1_CB_tiles * single_tile_size * 2; // double buffer, but for dram load pipeline, should be four-fold buffer
+    uint32_t out_CB_size = out_CB_tiles * single_tile_size; // double buffer, but for dram load pipeline, should be four-fold buffer    
     // dram buffer and circular buffer config for each core
     tt_metal::InterleavedBufferConfig dram_config_A{
                     .device= device,
@@ -139,15 +139,35 @@ void matmul_cannon(std::vector<bfloat16>& a, std::vector<bfloat16>& b, std::vect
     uint32_t src1_addr = src1_dram_buffer->address();
     uint32_t dst_addr = dst_dram_buffer->address();
 
-    uint32_t src0_cb_index = CB::c_in0; // 0 SRAM
+    uint32_t src0_cb_index = CB::c_in0; // 0 SRAM for NoC
     CircularBufferConfig cb_src0_config = CircularBufferConfig(in0_CB_size, {{src0_cb_index, cb_data_format}})
 		.set_page_size(src0_cb_index, single_tile_size);
     auto cb_src0 = tt_metal::CreateCircularBuffer(program, all_cores, cb_src0_config);
 
-    uint32_t src1_cb_index = CB::c_in1; // 1 SRAM
+    uint32_t src1_cb_index = CB::c_in1; // 1 SRAM for NoC
     CircularBufferConfig cb_src1_config = CircularBufferConfig(in1_CB_size, {{src1_cb_index, cb_data_format}})
 		.set_page_size(src1_cb_index, single_tile_size);
     auto cb_src1 = tt_metal::CreateCircularBuffer(program, all_cores, cb_src1_config);
+
+    uint32_t src2_cb_index = CB::c_in2; // 0 SRAM for DRAM
+    CircularBufferConfig cb_src2_config = CircularBufferConfig(in0_CB_size, {{src2_cb_index, cb_data_format}})
+		.set_page_size(src2_cb_index, single_tile_size);
+    auto cb_src2 = tt_metal::CreateCircularBuffer(program, all_cores, cb_src2_config);
+
+    uint32_t src3_cb_index = CB::c_in3; // 1 SRAM for DRAM
+    CircularBufferConfig cb_src3_config = CircularBufferConfig(in1_CB_size, {{src3_cb_index, cb_data_format}})
+		.set_page_size(src3_cb_index, single_tile_size);
+    auto cb_src3 = tt_metal::CreateCircularBuffer(program, all_cores, cb_src3_config);
+
+    // uint32_t dataflow0_cb_index = CB::dataflow0; // 0 SRAM for DRAM
+    // CircularBufferConfig cb_dataflow0_config = CircularBufferConfig(in0_CB_size, {{dataflow0_cb_index, cb_data_format}})
+	// 	.set_page_size(dataflow0_cb_index, single_tile_size);
+    // auto cb_dataflow0 = tt_metal::CreateCircularBuffer(program, all_cores, cb_dataflow0_config);
+
+    // uint32_t dataflow1_cb_index = CB::dataflow1; // 1 SRAM for DRAM
+    // CircularBufferConfig cb_dataflow1_config = CircularBufferConfig(in1_CB_size, {{dataflow1_cb_index, cb_data_format}})
+	// 	.set_page_size(dataflow1_cb_index, single_tile_size);
+    // auto cb_dataflow1 = tt_metal::CreateCircularBuffer(program, all_cores, cb_dataflow1_config);
 
     uint32_t output_cb_index = CB::c_out0; // Out DRAM
     uint32_t interm0_cb_index = CB::c_intermed0;
@@ -174,13 +194,15 @@ void matmul_cannon(std::vector<bfloat16>& a, std::vector<bfloat16>& b, std::vect
 
     auto reader_kernel_cannon = tt_metal::CreateKernel(
         program,
-        "tt_metal/programming_examples/matmul_common/kernels/dataflow/reader_bmm_cannon_semaphore.cpp",
+        "tt_metal/programming_examples/matmul_common/kernels/dataflow/reader_bmm_cannon_semaphore_swizzle.cpp",
+        // "tt_metal/programming_examples/matmul_common/kernels/dataflow/reader_bmm_cannon_semaphore.cpp",
         all_cores,
         tt_metal::DataMovementConfig{.processor = tt_metal::DataMovementProcessor::RISCV_1, .noc = tt_metal::NOC::RISCV_0_default, .noc_mode = NOC_MODE::DM_DEDICATED_NOC, .compile_args = reader_compile_time_args}
     );
     auto writer_kernel_cannon = tt_metal::CreateKernel(
         program,
-        "tt_metal/programming_examples/matmul_common/kernels/dataflow/writer_bmm_cannon.cpp",
+        "tt_metal/programming_examples/matmul_common/kernels/dataflow/writer_bmm_cannon_swizzle.cpp",
+        // "tt_metal/programming_examples/matmul_common/kernels/dataflow/writer_bmm_cannon.cpp",
         // "tt_metal/programming_examples/matmul_common/kernels/dataflow/writer_bmm_cannon_dummy.cpp",
         all_cores,
         tt_metal::DataMovementConfig{.processor = tt_metal::DataMovementProcessor::RISCV_0, .noc = tt_metal::NOC::RISCV_1_default, .compile_args = writer_compile_time_args}
@@ -260,7 +282,9 @@ void matmul_cannon(std::vector<bfloat16>& a, std::vector<bfloat16>& b, std::vect
                 (std::uint32_t) src1_prev_core_physical.x,
                 (std::uint32_t) src1_prev_core_physical.y,
                 (std::uint32_t) DRAM_SHARD_X,
-                (std::uint32_t) DRAM_SHARD_Y
+                (std::uint32_t) DRAM_SHARD_Y,
+                (std::uint32_t) core_physical.x,
+                (std::uint32_t) core_physical.y
             };
             tt_metal::SetRuntimeArgs(program, reader_kernel_cannon, core, reader_args);
 
