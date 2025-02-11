@@ -23,7 +23,7 @@ constexpr uint32_t CORE_NUM_X = 7;
 constexpr uint32_t CORE_NUM_Y = 7;
 constexpr uint32_t DRAM_SHARD_X = 4; // each time load from DRAM/NoC: height
 constexpr uint32_t DRAM_SHARD_Y = 4; // each time load from DRAM/NoC: width
-constexpr uint32_t DRAM_SHARD_K = 4;
+constexpr uint32_t DRAM_SHARD_K = PER_CORE_K; // make sure K is not split, because accumulate problem and compute/memory ratio
 constexpr uint32_t SUBBLOCK_SIZE_H = 4;
 constexpr uint32_t SUBBLOCK_SIZE_W = 2;
 

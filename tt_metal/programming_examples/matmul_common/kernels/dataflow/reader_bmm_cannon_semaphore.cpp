@@ -118,7 +118,8 @@ void kernel_main() {
                         }
                     }
                     src1_start_tile_id = ((core_x + core_y) % num_block_x) * Nt * per_core_K + core_y * per_core_N;
-                    src1_start_tile_id += dram_shard_w * dram_shard_y;
+                    // src1_start_tile_id += dram_shard_w * dram_shard_y;
+                    src1_start_tile_id += (dram_shard_h % 2 == 0 ? dram_shard_w : (per_core_N / dram_shard_y - 1 - dram_shard_w)) * dram_shard_y;
                     for (uint32_t h = 0; h < per_core_K; ++h) {
                         for (uint32_t w = 0; w < dram_shard_y; ++w) {
                             // disable DRAM ops to check NoC and TFLOPS
