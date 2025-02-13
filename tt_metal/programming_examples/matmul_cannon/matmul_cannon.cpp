@@ -194,7 +194,8 @@ void matmul_cannon(std::vector<bfloat16>& a, std::vector<bfloat16>& b, std::vect
 
     auto reader_kernel_cannon = tt_metal::CreateKernel(
         program,
-        "tt_metal/programming_examples/matmul_common/kernels/dataflow/reader_bmm_cannon_semaphore_swizzle.cpp",
+        "tt_metal/programming_examples/matmul_common/kernels/dataflow/reader_bmm_cannon_semaphore_swizzle_pipeline.cpp",
+        // "tt_metal/programming_examples/matmul_common/kernels/dataflow/reader_bmm_cannon_semaphore_swizzle.cpp",
         // "tt_metal/programming_examples/matmul_common/kernels/dataflow/reader_bmm_cannon_semaphore.cpp",
         all_cores,
         tt_metal::DataMovementConfig{.processor = tt_metal::DataMovementProcessor::RISCV_1, .noc = tt_metal::NOC::RISCV_0_default, .noc_mode = NOC_MODE::DM_DEDICATED_NOC, .compile_args = reader_compile_time_args}
@@ -222,7 +223,8 @@ void matmul_cannon(std::vector<bfloat16>& a, std::vector<bfloat16>& b, std::vect
     };
     auto compute_kernel_cannon = tt_metal::CreateKernel(
         program,
-        "tt_metal/programming_examples/matmul_common/kernels/compute/bmm_cannon_v3.cpp",
+        "tt_metal/programming_examples/matmul_common/kernels/compute/bmm_cannon_v3_pipeline.cpp",
+        // "tt_metal/programming_examples/matmul_common/kernels/compute/bmm_cannon_v3.cpp",
         // "tt_metal/programming_examples/matmul_common/kernels/compute/bmm_cannon_dummy.cpp",
         all_cores,
         tt_metal::ComputeConfig{.math_fidelity = math_fidelity, .compile_args = compute_compile_time_args}
@@ -414,3 +416,12 @@ int main(int argc, char **argv) {
 
     return 0;
 }
+
+/*
+valid combination:
+reader_bmm_cannon_semaphore.cpp                   writer_bmm_cannon_dummy.cpp    bmm_cannon_v3_dummy.cpp
+reader_bmm_cannon_semaphore.cpp                   writer_bmm_cannon.cpp          bmm_cannon_v3.cpp
+reader_bmm_cannon_semaphore.cpp                   writer_bmm_cannon_swizzle.cpp  bmm_cannon_v3.cpp
+reader_bmm_cannon_semaphore_swizzle.cpp           writer_bmm_cannon_swizzle.cpp  bmm_cannon_v3.cpp
+reader_bmm_cannon_semaphore_swizzle_pipeline.cpp  writer_bmm_cannon_swizzle.cpp  bmm_cannon_v3_pipeline.cpp
+*/
