@@ -199,7 +199,7 @@ void kernel_main() {
                     }
                 }
                 // no pipeline
-                noc_async_read_barrier();
+                // noc_async_read_barrier();
 
                 // in cannon process, do not need to read one block from neighbor compute kernel
                 // instead, directly write tile in current core into next core (shifted)
@@ -266,7 +266,7 @@ void kernel_main() {
             }
 
             // Postpone DRAM barrier to let NoC not wait for DRAM, push tiles, swap noc_cb with dram_cb, and update noc addr
-            // noc_async_read_barrier();
+            noc_async_read_barrier();
             cb_push_back(dram_cb_A, src0_sharded_tiles);
             cb_push_back(dram_cb_B, src1_sharded_tiles);
             swap(noc_cb_A, dram_cb_A);

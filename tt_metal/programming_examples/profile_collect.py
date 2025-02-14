@@ -73,9 +73,25 @@ def profile_cannon(df):
     # print(df_diff_bmm)
     # max_cycles_bmm = max(df_diff_bmm)
 
+    # total device cycle
+    df_core = df[[" core_x", " core_y"]]
+    df_core = df_core.drop_duplicates()
+    df_core_repeated = df_core.loc[np.repeat(df_core.index, 6)].reset_index(drop=True)
+    df_cannon_begin = df[df["  zone name"] == "TEST-reader_bmm_all"]
+    df_cannon_begin = df_cannon_begin[df_cannon_begin[" zone phase"] == "begin"].reset_index()
+    df_cannon_end = df[df["  zone name"] == "TEST-writer_bmm_cannon"]
+    df_cannon_end = df_cannon_end[df_cannon_end[" zone phase"] == "end"].reset_index()
+    result = df_cannon_end[" time[cycles since reset]"] - df_cannon_begin[" time[cycles since reset]"]
+    df_core_repeated["total-cycles"] = result
+    df_core_repeated.to_csv("output_total.csv", index=False)
+    grouped_df_reader_shift = df_core_repeated.groupby([" core_x", " core_y"])
+    df_cycles = grouped_df_reader_shift["total-cycles"].max()
+    max_cycles_total = max(df_cycles)
+
     print("reader shift cycles max", max_cycles_shift)
     print("reader shift cycles avg", avg_cycles_shift)
     print("reader bmm cycles", max_cycles_math)
+    print("total cannon cycles", max_cycles_total)
 
 
 def profile_cannon_fig(df):
