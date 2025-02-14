@@ -66,8 +66,8 @@ void kernel_main() {
             for (uint32_t j = 0; j < core_y; ++j) {
                 DeviceZoneScopedN("reader_write_to_noc_per_core");
                 // hard code for logical-physical core-NoC mapping in wormhole_b0
-                uint32_t dst_core_x_physical = i + 1 + (i >= 5);
-                uint32_t dst_core_y_physical = j + 1 + (j >= 4);
+                uint32_t dst_core_x_physical = i + 1 + (i >= 4);
+                uint32_t dst_core_y_physical = j + 1 + (j >= 5);
                 for (uint32_t h = 0; h < row_stride; ++h) {
                     for (uint32_t w = 0; w < col_stride; ++w) {
                         uint32_t l1_addr_read_in0_offset = ((i * row_stride + h) * Nt + (j * col_stride + w)) * single_tile_size;
@@ -86,8 +86,8 @@ void kernel_main() {
         for (uint32_t i = 0; i < core_x; ++i) {
             for (uint32_t j = 0; j < core_y; ++j) {
                 DeviceZoneScopedN("reader_semaphore_per_core");
-                uint32_t dst_core_x_physical = i + 1 + (i >= 5);
-                uint32_t dst_core_y_physical = j + 1 + (j >= 4);
+                uint32_t dst_core_x_physical = i + 1 + (i >= 4);
+                uint32_t dst_core_y_physical = j + 1 + (j >= 5);
                 uint64_t dst_semaphore_addr = get_noc_addr(dst_core_x_physical, dst_core_y_physical, sender_semaphore_addr);
                 noc_semaphore_inc(dst_semaphore_addr, 1);
             }
