@@ -123,6 +123,7 @@ int main(int argc, char **argv) {
     EnqueueWriteBuffer(cq, src_dram_buffer, src_vec.data(), false);
     EnqueueProgram(cq, program, false);
     EnqueueReadBuffer(cq, dst_dram_buffer, result_vec.data(), true);
+    tt_metal::detail::DumpDeviceProfileResults(device);
 
     // Untilize result before check correctness
     // untilize(result_vec, (M * core_x * core_y), (N));
@@ -148,6 +149,7 @@ int main(int argc, char **argv) {
                             // focus on the tile addr
                             uint32_t src_tile_addr = src_start + (row * Nt + col) * single_tile_elem;
                             uint32_t dst_tile_addr = dst_start + (row * Nt + col) * single_tile_elem;
+                            // std::cout << "src_tile_addr=" << src_tile_addr << "; dst_tile_addr=" << dst_tile_addr << ";" << std::endl;
                             for (uint32_t elem = 0; elem < single_tile_elem; ++elem) {
                                 // element-wise comparison
                                 if (src_vec[src_tile_addr + elem] != result_vec[dst_tile_addr + elem]) {

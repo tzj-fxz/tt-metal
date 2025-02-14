@@ -7,6 +7,7 @@
 // vector is not supported in reader kernel
 // #include <vector>
 #include "dataflow_api.h"
+#include "tools/profiler/kernel_profiler.hpp"
 
 void kernel_main() {
     uint32_t src_addr = get_arg_val<uint32_t>(0);
@@ -38,10 +39,13 @@ void kernel_main() {
     uint32_t l1_addr_read_in0_start = l1_addr_read_in0;
     uint32_t core_offset = curr_core_x_logical * core_y + curr_core_y_logical;
     uint32_t tile_id = core_offset * (Mt * Nt);
-    for (uint32_t h = 0; h < Mt; h++) {
-        for (uint32_t w = 0; w < Nt; w++) {
-            noc_async_read_tile(tile_id + (h * Nt + w), src, l1_addr_read_in0);
-            l1_addr_read_in0 += single_tile_size_bytes;
+    {
+        DeviceZoneScopedN("reader_read_from_DRAM");
+        for (uint32_t h = 0; h < Mt; h++) {
+            for (uint32_t w = 0; w < Nt; w++) {
+                noc_async_read_tile(tile_id + (h * Nt + w), src, l1_addr_read_in0);
+                l1_addr_read_in0 += single_tile_size_bytes;
+            }
         }
     }
     noc_async_read_barrier();
@@ -56,36 +60,44 @@ void kernel_main() {
     uint32_t l1_addr_write_out0 = get_write_ptr(tt::CB::c_out0);
     uint32_t l1_addr_write_out0_start = l1_addr_write_out0;
     uint32_t l1_addr_write_out0_offset = (curr_core_x_logical * row_stride * Nt + curr_core_y_logical * col_stride) * single_tile_size;
-    for (uint32_t i = 0; i < core_x; ++i) {
-        for (uint32_t j = 0; j < core_y; ++j) {
-            // uint32_t dst_core_x_physical = core_x_list[i];
-            // uint32_t dst_core_y_physical = core_y_list[j];
-            uint32_t dst_core_x_physical = i + 1 + (i >= 5);
-            uint32_t dst_core_y_physical = j + 1 + (j >= 4);
-            for (uint32_t h = 0; h < row_stride; ++h) {
-                for (uint32_t w = 0; w < col_stride; ++w) {
-                    uint32_t l1_addr_read_in0_offset = ((i * row_stride + h) * Nt + (j * col_stride + w)) * single_tile_size;
-                    uint32_t dst_noc_offset = (h * Nt + w) * single_tile_size;
-                    uint64_t dst_core_addr = get_noc_addr(dst_core_x_physical, dst_core_y_physical, l1_addr_write_out0_start + l1_addr_write_out0_offset + dst_noc_offset);
-                    noc_async_write(l1_addr_read_in0_start + l1_addr_read_in0_offset, dst_core_addr, single_tile_size);
+    {
+        DeviceZoneScopedN("reader_write_to_noc");
+        for (uint32_t i = 0; i < core_x; ++i) {
+            for (uint32_t j = 0; j < core_y; ++j) {
+                DeviceZoneScopedN("reader_write_to_noc_per_core");
+                // hard code for logical-physical core-NoC mapping in wormhole_b0
+                uint32_t dst_core_x_physical = i + 1 + (i >= 5);
+                uint32_t dst_core_y_physical = j + 1 + (j >= 4);
+                for (uint32_t h = 0; h < row_stride; ++h) {
+                    for (uint32_t w = 0; w < col_stride; ++w) {
+                        uint32_t l1_addr_read_in0_offset = ((i * row_stride + h) * Nt + (j * col_stride + w)) * single_tile_size;
+                        uint32_t dst_noc_offset = (h * Nt + w) * single_tile_size;
+                        uint64_t dst_core_addr = get_noc_addr(dst_core_x_physical, dst_core_y_physical, l1_addr_write_out0_start + l1_addr_write_out0_offset + dst_noc_offset);
+                        noc_async_write(l1_addr_read_in0_start + l1_addr_read_in0_offset, dst_core_addr, single_tile_size);
+                    }
                 }
             }
         }
+        noc_async_write_barrier();
     }
-    noc_async_write_barrier();
-
-    for (uint32_t i = 0; i < core_x; ++i) {
-        for (uint32_t j = 0; j < core_y; ++j) {
-            uint32_t dst_core_x_physical = i + 1 + (i >= 5);
-            uint32_t dst_core_y_physical = j + 1 + (j >= 4);
-            uint64_t dst_semaphore_addr = get_noc_addr(dst_core_x_physical, dst_core_y_physical, sender_semaphore_addr);
-            noc_semaphore_inc(dst_semaphore_addr, 1);
+    // Note: Use semaphore to wait for other cores sending over, then push back
+    {
+        DeviceZoneScopedN("reader_semaphore");
+        for (uint32_t i = 0; i < core_x; ++i) {
+            for (uint32_t j = 0; j < core_y; ++j) {
+                DeviceZoneScopedN("reader_semaphore_per_core");
+                uint32_t dst_core_x_physical = i + 1 + (i >= 5);
+                uint32_t dst_core_y_physical = j + 1 + (j >= 4);
+                uint64_t dst_semaphore_addr = get_noc_addr(dst_core_x_physical, dst_core_y_physical, sender_semaphore_addr);
+                noc_semaphore_inc(dst_semaphore_addr, 1);
+            }
         }
+        noc_semaphore_wait(sender_semaphore_ptr, core_x * core_y);
     }
-    noc_semaphore_wait(sender_semaphore_ptr, core_x * core_y);
-
-    // Note: Should use semaphore to wait for other cores sending over, then push back
-    cb_push_back(tt::CB::c_out0, Mt * Nt);
+    {
+        DeviceZoneScopedN("reader_push_to_writer");
+        cb_push_back(tt::CB::c_out0, Mt * Nt);
+    }
 
     cb_wait_front(tt::CB::c_in0, Mt * Nt);
     cb_pop_front(tt::CB::c_in0, Mt * Nt);
