@@ -6,14 +6,14 @@
 #include "dataflow_api.h"
 
 void kernel_main() {
-    const uint32_t dst_addr = get_arg_val<uint32_t>(0);
-    const uint32_t single_tile_size = get_arg_val<uint32_t>(1);
-    const uint32_t Mt = get_arg_val<uint32_t>(2);
-    const uint32_t Nt = get_arg_val<uint32_t>(3);
-    const uint32_t core_x = get_arg_val<uint32_t>(4);
-    const uint32_t core_y = get_arg_val<uint32_t>(5);
-    const uint32_t curr_core_x_logical = get_arg_val<uint32_t>(6);
-    const uint32_t curr_core_y_logical = get_arg_val<uint32_t>(7);
+    uint32_t dst_addr = get_arg_val<uint32_t>(0);
+    uint32_t single_tile_size = get_arg_val<uint32_t>(1);
+    uint32_t Mt = get_arg_val<uint32_t>(2);
+    uint32_t Nt = get_arg_val<uint32_t>(3);
+    uint32_t core_x = get_arg_val<uint32_t>(4);
+    uint32_t core_y = get_arg_val<uint32_t>(5);
+    uint32_t curr_core_x_logical = get_arg_val<uint32_t>(6);
+    uint32_t curr_core_y_logical = get_arg_val<uint32_t>(7);
 
     // wait from sender cores sending over
     cb_wait_front(tt::CB::c_out0, Mt * Nt);

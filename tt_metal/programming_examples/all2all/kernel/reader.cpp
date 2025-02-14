@@ -9,18 +9,21 @@
 #include "dataflow_api.h"
 
 void kernel_main() {
-    const uint32_t src_addr = get_arg_val<uint32_t>(0);
-    const uint32_t single_tile_size = get_arg_val<uint32_t>(1);
-    const uint32_t Mt = get_arg_val<uint32_t>(2);
-    const uint32_t Nt = get_arg_val<uint32_t>(3);
-    const uint32_t core_x = get_arg_val<uint32_t>(4);
-    const uint32_t core_y = get_arg_val<uint32_t>(5);
-    const uint32_t curr_core_x_logical = get_arg_val<uint32_t>(6);
-    const uint32_t curr_core_y_logical = get_arg_val<uint32_t>(7);
+    uint32_t src_addr = get_arg_val<uint32_t>(0);
+    uint32_t single_tile_size = get_arg_val<uint32_t>(1);
+    uint32_t Mt = get_arg_val<uint32_t>(2);
+    uint32_t Nt = get_arg_val<uint32_t>(3);
+    uint32_t core_x = get_arg_val<uint32_t>(4);
+    uint32_t core_y = get_arg_val<uint32_t>(5);
+    uint32_t curr_core_x_logical = get_arg_val<uint32_t>(6);
+    uint32_t curr_core_y_logical = get_arg_val<uint32_t>(7);
+    uint32_t sender_semaphore_addr = get_semaphore(get_arg_val<uint32_t>(8));
     // logical-physical mapping of core coordinate, hard code here for wormhole_b0
     // std::vector<uint32_t> core_x_list = {1, 2, 3, 4, 5, 7, 8};
     // std::vector<uint32_t> core_y_list = {1, 2, 3, 4, 6, 7, 8};
 
+    volatile tt_l1_ptr uint32_t *sender_semaphore_ptr = reinterpret_cast<volatile tt_l1_ptr uint32_t *>(sender_semaphore_addr);
+    noc_semaphore_set(sender_semaphore_ptr, 0);
     const uint32_t single_tile_size_bytes = get_tile_size(tt::CB::c_in0);
     const DataFormat src_data_format = get_dataformat(tt::CB::c_in0);
 
@@ -71,7 +74,17 @@ void kernel_main() {
     }
     noc_async_write_barrier();
 
-    // TODO Should wait for other cores sending over, then push back
+    for (uint32_t i = 0; i < core_x; ++i) {
+        for (uint32_t j = 0; j < core_y; ++j) {
+            uint32_t dst_core_x_physical = i + 1 + (i >= 5);
+            uint32_t dst_core_y_physical = j + 1 + (j >= 4);
+            uint64_t dst_semaphore_addr = get_noc_addr(dst_core_x_physical, dst_core_y_physical, sender_semaphore_addr);
+            noc_semaphore_inc(dst_semaphore_addr, 1);
+        }
+    }
+    noc_semaphore_wait(sender_semaphore_ptr, core_x * core_y);
+
+    // Note: Should use semaphore to wait for other cores sending over, then push back
     cb_push_back(tt::CB::c_out0, Mt * Nt);
 
     cb_wait_front(tt::CB::c_in0, Mt * Nt);
