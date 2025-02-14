@@ -235,10 +235,28 @@ def profile_noc_fig(df):
     plt.show()
     plt.savefig("noc.png")
 
+def profile_all2all(df):
+    df_core = df[[" core_x", " core_y"]]
+    df_core = df_core.drop_duplicates().reset_index()
+    df_reader_write_to_noc = df[df["  zone name"] == "reader_write_to_noc"]
+    df_reader_write_to_noc_begin = df_reader_write_to_noc[df_reader_write_to_noc[" zone phase"] == "begin"].reset_index()
+    df_reader_write_to_noc_end = df_reader_write_to_noc[df_reader_write_to_noc[" zone phase"] == "end"].reset_index()
+    df_reader_semaphore = df[df["  zone name"] == "reader_semaphore"]
+    df_reader_semaphore_begin = df_reader_semaphore[df_reader_semaphore[" zone phase"] == "begin"].reset_index()
+    df_reader_semaphore_end = df_reader_semaphore[df_reader_semaphore[" zone phase"] == "end"].reset_index()
+    noc_result = df_reader_write_to_noc_end[" time[cycles since reset]"] - df_reader_write_to_noc_begin[" time[cycles since reset]"]
+    noc_semaphore_result = df_reader_semaphore_end[" time[cycles since reset]"] - df_reader_semaphore_begin[" time[cycles since reset]"]
+    total_result = df_reader_semaphore_end[" time[cycles since reset]"] - df_reader_write_to_noc_begin[" time[cycles since reset]"]
+    df_core["all2all-noc-data-cycles"] = noc_result
+    df_core["all2all-noc-semaphore-cycles"] = noc_semaphore_result
+    df_core["all2all-noc-cycles"] = total_result
+    print(df_core)
+    df_core.to_csv("output_all2all_noc.csv", index=False)
+
 
 def main():
     parser = argparse.ArgumentParser(description="choose type to profile")
-    parser.add_argument('--mode', '-m', type=str, choices=['noc', 'cannon'], default='noc')
+    parser.add_argument('--mode', '-m', type=str, choices=['noc', 'cannon', 'all2all'], default='noc')
     args = parser.parse_args()
     if args.mode == 'noc':
         profile_noc(df)
@@ -246,6 +264,8 @@ def main():
     elif args.mode == 'cannon':
         profile_cannon(df)
         profile_cannon_fig(df)
+    elif args.mode == 'all2all':
+        profile_all2all(df)
 
 
 if __name__ == "__main__":

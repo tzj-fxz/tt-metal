@@ -47,8 +47,8 @@ void kernel_main() {
                 l1_addr_read_in0 += single_tile_size_bytes;
             }
         }
+        noc_async_read_barrier();
     }
-    noc_async_read_barrier();
     cb_push_back(tt::CB::c_in0, Mt * Nt);
     
     cb_reserve_back(tt::CB::c_out0, Mt * Nt);
@@ -93,11 +93,11 @@ void kernel_main() {
             }
         }
         noc_semaphore_wait(sender_semaphore_ptr, core_x * core_y);
-    }
-    {
-        DeviceZoneScopedN("reader_push_to_writer");
         cb_push_back(tt::CB::c_out0, Mt * Nt);
     }
+    // {
+    //     DeviceZoneScopedN("reader_push_to_writer");
+    // }
 
     cb_wait_front(tt::CB::c_in0, Mt * Nt);
     cb_pop_front(tt::CB::c_in0, Mt * Nt);
