@@ -321,9 +321,9 @@ void matmul_cannon(std::vector<bfloat16>& a, std::vector<bfloat16>& b, std::vect
     EnqueueWriteBuffer(cq, src1_dram_buffer, b.data(), false);
     auto start = chrono::high_resolution_clock::now();
     EnqueueProgram(cq, program, false);
+    Finish(cq);
     chrono::duration<double> duration = chrono::high_resolution_clock::now() - start;
     EnqueueReadBuffer(cq, dst_dram_buffer, output.data(), true);
-    Finish(cq);
     log_info(tt::LogVerif, "Program average time: {} seconds", duration.count());
     // auto start = chrono::high_resolution_clock::now();
     // for (int i = 0; i < PROFILING_ITERATIONS; ++i) {
@@ -343,9 +343,9 @@ void matmul_cannon(std::vector<bfloat16>& a, std::vector<bfloat16>& b, std::vect
 int main(int argc, char **argv) {
     bool pass = true;
     
-    if (getenv("TT_METAL_SLOW_DISPATCH_MODE") != nullptr) {
-        TT_THROW("Test not supported w/ slow dispatch, exiting");
-    }
+    // if (getenv("TT_METAL_SLOW_DISPATCH_MODE") != nullptr) {
+    //     TT_THROW("Test not supported w/ slow dispatch, exiting");
+    // }
 
     try {
         /* Silicon accelerator setup */

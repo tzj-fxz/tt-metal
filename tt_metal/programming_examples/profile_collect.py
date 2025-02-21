@@ -94,6 +94,25 @@ def profile_cannon(df):
     print("total cannon cycles", max_cycles_total)
 
 
+def profile_reuse_mcast(df):
+    # total device cycle
+    df_core = df[[" core_x", " core_y"]]
+    df_core = df_core.drop_duplicates()
+    df_core_repeated = df_core.loc[np.repeat(df_core.index, 6)].reset_index(drop=True)
+    df_cannon_begin = df[df["  zone name"] == "reuse-mcast-reader"]
+    df_cannon_begin = df_cannon_begin[df_cannon_begin[" zone phase"] == "begin"].reset_index()
+    df_cannon_end = df[df["  zone name"] == "reuse-mcast-writer"]
+    df_cannon_end = df_cannon_end[df_cannon_end[" zone phase"] == "end"].reset_index()
+    result = df_cannon_end[" time[cycles since reset]"] - df_cannon_begin[" time[cycles since reset]"]
+    df_core_repeated["total-cycles"] = result
+    df_core_repeated.to_csv("output_total_reuse_mcast.csv", index=False)
+    grouped_df_reader_shift = df_core_repeated.groupby([" core_x", " core_y"])
+    df_cycles = grouped_df_reader_shift["total-cycles"].max()
+    max_cycles_total = max(df_cycles)
+
+    print("total reuse_mcast cycles", max_cycles_total)
+
+
 def profile_cannon_fig(df):
     # Convert cycles to milliseconds (cycles)
     df['time_cycle'] = df[' time[cycles since reset]']
@@ -256,7 +275,7 @@ def profile_all2all(df):
 
 def main():
     parser = argparse.ArgumentParser(description="choose type to profile")
-    parser.add_argument('--mode', '-m', type=str, choices=['noc', 'cannon', 'all2all'], default='noc')
+    parser.add_argument('--mode', '-m', type=str, choices=['noc', 'cannon', 'all2all', 'reusemcast'], default='noc')
     args = parser.parse_args()
     if args.mode == 'noc':
         profile_noc(df)
@@ -266,6 +285,8 @@ def main():
         profile_cannon_fig(df)
     elif args.mode == 'all2all':
         profile_all2all(df)
+    elif args.mode == 'reusemcast':
+        profile_reuse_mcast(df)
 
 
 if __name__ == "__main__":

@@ -293,20 +293,21 @@ void matmul_multicore_reuse_mcast(std::vector<bfloat16>& a, std::vector<bfloat16
 
     auto unary_writer_kernel_noc0_id = tt_metal::CreateKernel(
         program,
-        "tt_metal/programming_examples/matmul_common/kernels/dataflow/writer_bmm_tile_layout.cpp",
+        "tt_metal/programming_examples/matmul_common/kernels/dataflow/writer_bmm_tile_layout_reuse_mcast.cpp",
         all_except_left_column,
         tt_metal::DataMovementConfig{.processor = tt_metal::DataMovementProcessor::RISCV_0, .noc = tt_metal::NOC::RISCV_0_default, .compile_args = writer_compile_time_args});
 
     auto unary_writer_kernel_noc1_id = tt_metal::CreateKernel(
         program,
-        "tt_metal/programming_examples/matmul_common/kernels/dataflow/writer_bmm_tile_layout.cpp",
+        "tt_metal/programming_examples/matmul_common/kernels/dataflow/writer_bmm_tile_layout_reuse_mcast.cpp",
         left_column,
         tt_metal::DataMovementConfig{.processor = tt_metal::DataMovementProcessor::RISCV_0, .noc = tt_metal::NOC::RISCV_1_default, .compile_args = writer_compile_time_args});
 
     // Create compute kernel
     auto mm_kernel_id = tt_metal::CreateKernel(
         program,
-        "tt_metal/programming_examples/matmul_common/kernels/compute/bmm_large_block_zm.cpp",
+        // "tt_metal/programming_examples/matmul_common/kernels/compute/bmm_large_block_zm.cpp",
+        "tt_metal/programming_examples/matmul_common/kernels/compute/bmm_reuse_mcast_mmblock.cpp",
         all_cores,
         tt_metal::ComputeConfig{.math_fidelity = math_fidelity, .compile_args = compute_kernel_args}
     );
@@ -456,9 +457,9 @@ void matmul_multicore_reuse_mcast(std::vector<bfloat16>& a, std::vector<bfloat16
 int main(int argc, char **argv) {
     bool pass = true;
 
-    if (getenv("TT_METAL_SLOW_DISPATCH_MODE") != nullptr) {
-        TT_THROW("Test not supported w/ slow dispatch, exiting");
-    }
+    // if (getenv("TT_METAL_SLOW_DISPATCH_MODE") != nullptr) {
+    //     TT_THROW("Test not supported w/ slow dispatch, exiting");
+    // }
 
     try {
         /* Silicon accelerator setup */
@@ -472,9 +473,12 @@ int main(int argc, char **argv) {
         // NOTE: Maximum number of tiles in output is 120 * 16^2 = 30,720 (eg. [1, 1, 5120, 6144])
 
         /* Create source data */
-        constexpr uint32_t M = 2048;  // user-defined
-        constexpr uint32_t N = 2048;  // user-defined
-        constexpr uint32_t K = 2048;  // user-defined
+        // constexpr uint32_t M = 2048;  // user-defined
+        // constexpr uint32_t N = 2048;  // user-defined
+        // constexpr uint32_t K = 2048;  // user-defined
+        constexpr uint32_t M = 7 * 8 * 32;  // user-defined
+        constexpr uint32_t N = 7 * 8 * 32;  // user-defined
+        constexpr uint32_t K = 7 * 8 * 32;  // user-defined
         constexpr uint32_t B = 1;  // user-defined
 
         uint32_t Mt = M / TILE_HEIGHT;
