@@ -48,15 +48,15 @@ void kernel_main() {
                 for (uint32_t subblock_m = 0; subblock_m < subblock_h; ++subblock_m) {
                     for (uint32_t subblock_n = 0; subblock_n < subblock_w; ++subblock_n) {
                         cb_wait_front(tt::CB::c_out0, subblock_tiles);
-                        // uint32_t l1_read_addr_out = get_read_ptr(tt::CB::c_out0);
-                        // uint32_t output_offset = output_shard_index + subblock_m * subblock_size_h * Nt + subblock_n * subblock_size_w;
-                        // for (uint32_t h = 0; h < subblock_size_h; ++h) {
-                        //     for (uint32_t w = 0; w < subblock_size_w; ++w) {
-                        //         noc_async_write_tile(output_offset + h * Nt + w, s, l1_read_addr_out);
-                        //         l1_read_addr_out += single_tile_size_bytes;
-                        //     }
-                        // }
-                        // noc_async_write_barrier();
+                        uint32_t l1_read_addr_out = get_read_ptr(tt::CB::c_out0);
+                        uint32_t output_offset = output_shard_index + subblock_m * subblock_size_h * Nt + subblock_n * subblock_size_w;
+                        for (uint32_t h = 0; h < subblock_size_h; ++h) {
+                            for (uint32_t w = 0; w < subblock_size_w; ++w) {
+                                noc_async_write_tile(output_offset + h * Nt + w, s, l1_read_addr_out);
+                                l1_read_addr_out += single_tile_size_bytes;
+                            }
+                        }
+                        noc_async_write_barrier();
                         cb_pop_front(tt::CB::c_out0, subblock_tiles);
                     }
                 }                

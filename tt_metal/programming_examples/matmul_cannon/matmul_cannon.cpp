@@ -19,8 +19,8 @@ constexpr uint32_t PROFILING_ITERATIONS = 0;
 constexpr uint32_t PER_CORE_M = 8;
 constexpr uint32_t PER_CORE_N = 8;
 constexpr uint32_t PER_CORE_K = 8;
-constexpr uint32_t CORE_NUM_X = 7;
-constexpr uint32_t CORE_NUM_Y = 7;
+constexpr uint32_t CORE_NUM_X = 4;
+constexpr uint32_t CORE_NUM_Y = 4;
 constexpr uint32_t DRAM_SHARD_X = 4; // each time load from DRAM/NoC: height
 constexpr uint32_t DRAM_SHARD_Y = 4; // each time load from DRAM/NoC: width
 constexpr uint32_t DRAM_SHARD_K = PER_CORE_K; // make sure K is not split, because accumulate problem and compute/memory ratio
@@ -195,16 +195,16 @@ void matmul_cannon(std::vector<bfloat16>& a, std::vector<bfloat16>& b, std::vect
     auto reader_kernel_cannon = tt_metal::CreateKernel(
         program,
         // "tt_metal/programming_examples/matmul_common/kernels/dataflow/reader_bmm_cannon_semaphore_swizzle_pipeline.cpp",
-        "tt_metal/programming_examples/matmul_common/kernels/dataflow/reader_bmm_cannon_semaphore_swizzle.cpp",
-        // "tt_metal/programming_examples/matmul_common/kernels/dataflow/reader_bmm_cannon_semaphore.cpp",
+        // "tt_metal/programming_examples/matmul_common/kernels/dataflow/reader_bmm_cannon_semaphore_swizzle.cpp",
+        "tt_metal/programming_examples/matmul_common/kernels/dataflow/reader_bmm_cannon_semaphore.cpp",
         all_cores,
         tt_metal::DataMovementConfig{.processor = tt_metal::DataMovementProcessor::RISCV_1, .noc = tt_metal::NOC::RISCV_0_default, .noc_mode = NOC_MODE::DM_DEDICATED_NOC, .compile_args = reader_compile_time_args}
     );
     auto writer_kernel_cannon = tt_metal::CreateKernel(
         program,
-        "tt_metal/programming_examples/matmul_common/kernels/dataflow/writer_bmm_cannon_swizzle.cpp",
+        // "tt_metal/programming_examples/matmul_common/kernels/dataflow/writer_bmm_cannon_swizzle.cpp",
         // "tt_metal/programming_examples/matmul_common/kernels/dataflow/writer_bmm_cannon.cpp",
-        // "tt_metal/programming_examples/matmul_common/kernels/dataflow/writer_bmm_cannon_dummy.cpp",
+        "tt_metal/programming_examples/matmul_common/kernels/dataflow/writer_bmm_cannon_dummy.cpp",
         all_cores,
         tt_metal::DataMovementConfig{.processor = tt_metal::DataMovementProcessor::RISCV_0, .noc = tt_metal::NOC::RISCV_1_default, .compile_args = writer_compile_time_args}
     );
@@ -224,8 +224,8 @@ void matmul_cannon(std::vector<bfloat16>& a, std::vector<bfloat16>& b, std::vect
     auto compute_kernel_cannon = tt_metal::CreateKernel(
         program,
         // "tt_metal/programming_examples/matmul_common/kernels/compute/bmm_cannon_v3_pipeline.cpp",
-        "tt_metal/programming_examples/matmul_common/kernels/compute/bmm_cannon_v3.cpp",
-        // "tt_metal/programming_examples/matmul_common/kernels/compute/bmm_cannon_dummy.cpp",
+        // "tt_metal/programming_examples/matmul_common/kernels/compute/bmm_cannon_v3.cpp",
+        "tt_metal/programming_examples/matmul_common/kernels/compute/bmm_cannon_dummy.cpp",
         all_cores,
         tt_metal::ComputeConfig{.math_fidelity = math_fidelity, .compile_args = compute_compile_time_args}
     );

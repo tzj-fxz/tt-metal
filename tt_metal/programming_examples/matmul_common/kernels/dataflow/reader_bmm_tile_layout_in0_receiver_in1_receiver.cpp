@@ -73,33 +73,39 @@ void kernel_main() {
     for (uint32_t b = 0; b < batch; b++) {
         for(uint32_t block = 0; block < num_blocks; block++) {
             // Operand 0
-            cb_reserve_back(cb_id_in0, in0_block_num_tiles);
+            {
+                DeviceZoneScopedN("in0-noc-receive");                    
+                cb_reserve_back(cb_id_in0, in0_block_num_tiles);
 
-            // Set in0 semaphore value to INVALID
-            noc_semaphore_set(in0_mcast_receiver_semaphore_addr_ptr, INVALID);
+                // Set in0 semaphore value to INVALID
+                noc_semaphore_set(in0_mcast_receiver_semaphore_addr_ptr, INVALID);
 
-            // Atomic increment source core counter
-            uint64_t in0_mcast_sender_semaphore_noc_addr = get_noc_addr(in0_mcast_sender_noc_x, in0_mcast_sender_noc_y, in0_mcast_sender_semaphore_addr);
-            noc_semaphore_inc(in0_mcast_sender_semaphore_noc_addr, 1);
+                // Atomic increment source core counter
+                uint64_t in0_mcast_sender_semaphore_noc_addr = get_noc_addr(in0_mcast_sender_noc_x, in0_mcast_sender_noc_y, in0_mcast_sender_semaphore_addr);
+                noc_semaphore_inc(in0_mcast_sender_semaphore_noc_addr, 1);
 
-            // wait on in0 semaphore value to become VALID (set by mcast sender after it multicasts data)
-            noc_semaphore_wait(in0_mcast_receiver_semaphore_addr_ptr, VALID);
+                // wait on in0 semaphore value to become VALID (set by mcast sender after it multicasts data)
+                noc_semaphore_wait(in0_mcast_receiver_semaphore_addr_ptr, VALID);
 
-            cb_push_back(cb_id_in0, in0_block_num_tiles);
+                cb_push_back(cb_id_in0, in0_block_num_tiles);
+            }
 
             // Operand 1
-            cb_reserve_back(cb_id_in1, in1_block_num_tiles);
+            {
+                DeviceZoneScopedN("in1-noc-receive");
+                cb_reserve_back(cb_id_in1, in1_block_num_tiles);
 
-            // Set in1 semaphore value to INVALID
-            noc_semaphore_set(in1_mcast_receiver_semaphore_addr_ptr, INVALID);
+                // Set in1 semaphore value to INVALID
+                noc_semaphore_set(in1_mcast_receiver_semaphore_addr_ptr, INVALID);
 
-            uint64_t in1_mcast_sender_semaphore_noc_addr = get_noc_addr(in1_mcast_sender_noc_x, in1_mcast_sender_noc_y, in1_mcast_sender_semaphore_addr);
-            noc_semaphore_inc(in1_mcast_sender_semaphore_noc_addr, 1);
+                uint64_t in1_mcast_sender_semaphore_noc_addr = get_noc_addr(in1_mcast_sender_noc_x, in1_mcast_sender_noc_y, in1_mcast_sender_semaphore_addr);
+                noc_semaphore_inc(in1_mcast_sender_semaphore_noc_addr, 1);
 
-            // wait on in1 semaphore value to become VALID (set by mcast sender after it multicasts data)
-            noc_semaphore_wait(in1_mcast_receiver_semaphore_addr_ptr, VALID);
+                // wait on in1 semaphore value to become VALID (set by mcast sender after it multicasts data)
+                noc_semaphore_wait(in1_mcast_receiver_semaphore_addr_ptr, VALID);
 
-            cb_push_back(cb_id_in1, in1_block_num_tiles);
+                cb_push_back(cb_id_in1, in1_block_num_tiles);
+            }
         }
     }
 }

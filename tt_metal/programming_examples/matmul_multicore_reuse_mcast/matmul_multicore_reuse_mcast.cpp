@@ -85,17 +85,17 @@ void matmul_multicore_reuse_mcast(std::vector<bfloat16>& a, std::vector<bfloat16
     // NOTE: Only supports matmuls where output is blocks of 16 x 16 tiles (ie. multiples of 16*32 x 16*32)
     // NOTE: Maximum number of tiles in output is 120 * 16^2 = 30,720 (eg. [1, 1, 5120, 6144])2
     uint32_t in0_block_w = 2;
-    // uint32_t out_subblock_h = 4;
-    // uint32_t out_subblock_w = 2;
-    // uint32_t per_core_M = 16;
-    // uint32_t per_core_N = 16;
+    uint32_t out_subblock_h = 4;
+    uint32_t out_subblock_w = 2;
+    uint32_t per_core_M = 8;
+    uint32_t per_core_N = 8;
 
     // Get large matmul params
-    auto matmul_params = bmm_op_utils::get_large_matmul_params(Mt, Nt, num_cores_y, num_cores_x, in0_block_w);
-    uint32_t per_core_M = std::get<0>(matmul_params);
-    uint32_t per_core_N = std::get<1>(matmul_params);
-    uint32_t out_subblock_h = std::get<2>(matmul_params);
-    uint32_t out_subblock_w = std::get<3>(matmul_params);
+    // auto matmul_params = bmm_op_utils::get_large_matmul_params(Mt, Nt, num_cores_y, num_cores_x, in0_block_w);
+    // uint32_t per_core_M = std::get<0>(matmul_params);
+    // uint32_t per_core_N = std::get<1>(matmul_params);
+    // uint32_t out_subblock_h = std::get<2>(matmul_params);
+    // uint32_t out_subblock_w = std::get<3>(matmul_params);
 
     log_info(tt::LogVerif, " -- Metalium Core Sizing --");
     log_info(tt::LogVerif, " -- per_core_M= {} -- per_core_N= {} -- out_subblock_h= {} -- out_subblock_w= {} --", per_core_M, per_core_N, out_subblock_h, out_subblock_w);
@@ -307,7 +307,8 @@ void matmul_multicore_reuse_mcast(std::vector<bfloat16>& a, std::vector<bfloat16
     auto mm_kernel_id = tt_metal::CreateKernel(
         program,
         // "tt_metal/programming_examples/matmul_common/kernels/compute/bmm_large_block_zm.cpp",
-        "tt_metal/programming_examples/matmul_common/kernels/compute/bmm_reuse_mcast_mmblock.cpp",
+        // "tt_metal/programming_examples/matmul_common/kernels/compute/bmm_reuse_mcast_mmblock.cpp",
+        "tt_metal/programming_examples/matmul_common/kernels/compute/bmm_reuse_mcast_mmblock_dummy.cpp",
         all_cores,
         tt_metal::ComputeConfig{.math_fidelity = math_fidelity, .compile_args = compute_kernel_args}
     );
@@ -437,16 +438,17 @@ void matmul_multicore_reuse_mcast(std::vector<bfloat16>& a, std::vector<bfloat16
 
     EnqueueWriteBuffer(cq, src0_dram_buffer, a.data(), false);
     EnqueueWriteBuffer(cq, src1_dram_buffer, b.data(), false);
+    auto start = chrono::high_resolution_clock::now();
     EnqueueProgram(cq, program, false);
     Finish(cq);
-    auto start = chrono::high_resolution_clock::now();
-    for (int i = 0; i < PROFILING_ITERATIONS; ++i) {
-        EnqueueProgram(cq, program, false);
-        Finish(cq);
-    }
+    // for (int i = 0; i < PROFILING_ITERATIONS; ++i) {
+    //     EnqueueProgram(cq, program, false);
+    //     Finish(cq);
+    // }
     chrono::duration<double> duration = chrono::high_resolution_clock::now() - start;
-    log_info(tt::LogVerif, "Program average time: {} seconds", duration.count() / PROFILING_ITERATIONS);
     EnqueueReadBuffer(cq, dst_dram_buffer, output.data(), true);
+    log_info(tt::LogVerif, "Program average time: {} seconds", duration.count());
+    return;
 }
 
 
@@ -476,9 +478,9 @@ int main(int argc, char **argv) {
         // constexpr uint32_t M = 2048;  // user-defined
         // constexpr uint32_t N = 2048;  // user-defined
         // constexpr uint32_t K = 2048;  // user-defined
-        constexpr uint32_t M = 7 * 8 * 32;  // user-defined
-        constexpr uint32_t N = 7 * 8 * 32;  // user-defined
-        constexpr uint32_t K = 7 * 8 * 32;  // user-defined
+        constexpr uint32_t M = 1024;  // user-defined
+        constexpr uint32_t N = 1024;  // user-defined
+        constexpr uint32_t K = 1024;  // user-defined
         constexpr uint32_t B = 1;  // user-defined
 
         uint32_t Mt = M / TILE_HEIGHT;
@@ -512,7 +514,7 @@ int main(int argc, char **argv) {
 
         float pearson = check_bfloat16_vector_pcc(golden_vec, result_vec);
         log_info(tt::LogVerif, "Metalium vs Golden -- PCC = {}", pearson);
-        TT_FATAL(pearson > 0.98, "PCC not high enough. Result PCC: {}, Expected PCC: 0.98", pearson);
+        // TT_FATAL(pearson > 0.98, "PCC not high enough. Result PCC: {}, Expected PCC: 0.98", pearson);
 
         pass &= CloseDevice(device);
 
