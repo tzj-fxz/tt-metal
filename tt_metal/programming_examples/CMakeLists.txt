@@ -18,6 +18,7 @@ set(PROGRAMMING_EXAMPLES_SRCS
     ${CMAKE_CURRENT_SOURCE_DIR}/noc_multicore/noc_multicore.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/matmul_cannon/matmul_cannon.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/all2all/all2all.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/moe_random/moe.cpp
 )
 
 include(${PROJECT_SOURCE_DIR}/cmake/helper_functions.cmake)

@@ -160,6 +160,8 @@ void matmul_multicore_reuse_mcast(std::vector<bfloat16>& a, std::vector<bfloat16
     uint32_t start_core_y = start_core.y;
     uint32_t num_cores_c = core_range.x;
     uint32_t num_cores_r = core_range.y;
+    log_info(tt::LogVerif, " -- core_x_max= {} -- core_y_max= {} --", num_cores_x, num_cores_y);
+    log_info(tt::LogVerif, " -- core_x= {} -- core_y= {} --", num_cores_c, num_cores_r);
 
     CoreRange all_cores(
         {(std::size_t)start_core_x, (std::size_t)start_core_y},
@@ -306,9 +308,9 @@ void matmul_multicore_reuse_mcast(std::vector<bfloat16>& a, std::vector<bfloat16
     // Create compute kernel
     auto mm_kernel_id = tt_metal::CreateKernel(
         program,
-        // "tt_metal/programming_examples/matmul_common/kernels/compute/bmm_large_block_zm.cpp",
+        "tt_metal/programming_examples/matmul_common/kernels/compute/bmm_large_block_zm.cpp",
         // "tt_metal/programming_examples/matmul_common/kernels/compute/bmm_reuse_mcast_mmblock.cpp",
-        "tt_metal/programming_examples/matmul_common/kernels/compute/bmm_reuse_mcast_mmblock_dummy.cpp",
+        // "tt_metal/programming_examples/matmul_common/kernels/compute/bmm_reuse_mcast_mmblock_dummy.cpp",
         all_cores,
         tt_metal::ComputeConfig{.math_fidelity = math_fidelity, .compile_args = compute_kernel_args}
     );
