@@ -16,6 +16,19 @@
 using namespace tt;
 using namespace tt::tt_metal;
 
+
+inline std::vector<float> create_random_vector_of_fp32(uint32_t num_bytes, float rand_max_float, int seed, float offset = 0.0f) {
+    auto rand_float = std::bind(std::uniform_real_distribution<float>(0, rand_max_float), std::mt19937(seed));
+
+    std::vector<float> vec(num_bytes/sizeof(float), 0);
+    for (int i = 0; i < vec.size(); i++) {
+        float num_1_float = rand_float() + offset;
+        vec[i] = num_1_float;
+    }
+    return vec;
+}
+
+
 int main(int argc, char **argv) {
     TT_FATAL(argc == 5, "Expected 5 arguments (core_x, core_y, M, K) but got {}", argc);
     // Core range: (core_x, core_y), Tokens: M (tiles), Core Dests: K
@@ -38,13 +51,13 @@ int main(int argc, char **argv) {
     CoreRange cores(start_core, end_core);
     // get sharded arguments
     // get data
-    tt::DataFormat data_format = tt::DataFormat::Float16_b;
+    tt::DataFormat data_format = tt::DataFormat::Float32;
     uint32_t single_tile_elem = tt::constants::TILE_HEIGHT * tt::constants::TILE_WIDTH;
-    uint32_t single_tile_size = sizeof(bfloat16) * single_tile_elem; // 2048B
+    uint32_t single_tile_size = sizeof(float) * single_tile_elem;
     // DRAM will hold data of all cores
     uint32_t dram_buffer_size = single_tile_size * M * core_x * core_y;
-    std::vector<bfloat16> src_vec = create_random_vector_of_bfloat16_native(dram_buffer_size, 1, 1235);
-    std::vector<bfloat16> result_vec(dram_buffer_size/sizeof(bfloat16));
+    std::vector<float> src_vec = create_random_vector_of_fp32(dram_buffer_size, 1, 1235);
+    std::vector<float> result_vec(dram_buffer_size / sizeof(float));
 
     // Tilize input data before initialize device config
     // tilize(src_vec, (M * core_x * core_y), (N));
@@ -128,6 +141,36 @@ int main(int argc, char **argv) {
 
     // Compare src and dst vectors
     bool vectors_match = true;
+    for (uint32_t i = 0; i < (core_x * core_y); ++i) {
+        uint32_t curr_core_x = i / core_y;
+        uint32_t curr_core_y = i % core_y;
+        uint32_t index_base = i * (core_x * core_y);
+        uint32_t data_base = i * M * (core_x * core_y);
+        for (uint32_t j = 0; j < (core_x * core_y); ++j) {
+            // if (result_index_vec[index_base + j] == 1) {
+            //     for (uint32_t k = 0; k < M; ++k) {
+            //         if (result_vec[data_base + j * M + k] != src_vec[j * M + k]) {
+            //             vectors_match = false;
+            //             std::cout << "Mismatch at core (" << curr_core_x << ", " << curr_core_y << ") receive from core (" << j / core_y << ", " << j % core_y << ")" << std::endl;
+            //         } else {
+            //             std::cout << "Match at core (" << curr_core_x << ", " << curr_core_y << ") receive from core (" << j / core_y << ", " << j % core_y << ")" << std::endl;
+            //         }
+            //     }
+            // }
+            for (uint32_t k = 0; k < M * single_tile_elem; ++k) {
+                std::cout << result_vec[data_base + j * M + k] << " ";
+            }
+            std::cout << std::endl;
+            for (uint32_t k = 0; k < M * single_tile_elem; ++k) {
+                std::cout << src_vec[j * M + k] << " ";
+            }
+            std::cout << std::endl;
+        }
+        // for (uint32_t j = 0; j < core_x * core_y; ++j) {
+        //     std::cout << result_index_vec[index_base + j] << " ";
+        // }
+        std::cout << std::endl;
+    }
 
     if (vectors_match) {
         std::cout << "MoE Random-K test PASSED - src and dst vectors match" << std::endl;
