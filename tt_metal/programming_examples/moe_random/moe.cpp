@@ -61,21 +61,17 @@ int main(int argc, char **argv) {
     CoreCoord end_core = {core_x - 1, core_y - 1};
     CoreRange cores(start_core, end_core);
     // get data
-    // tt::DataFormat data_format = tt::DataFormat::Float32;
-    tt::DataFormat data_format = tt::DataFormat::UInt32;
+    tt::DataFormat data_format = tt::DataFormat::Float32;
+    // tt::DataFormat data_format = tt::DataFormat::UInt32;
     uint32_t single_tile_elem = tt::constants::TILE_HEIGHT * tt::constants::TILE_WIDTH;
     uint32_t single_tile_size = sizeof(float) * single_tile_elem;
     // DRAM will hold data of all cores
     uint32_t dram_buffer_size_input = single_tile_size * M * core_x * core_y;
     uint32_t dram_buffer_size_output = single_tile_size * M * (core_x * core_y) * (core_x * core_y);
-    // std::vector<float> src_vec = create_random_vector_of_fp32(dram_buffer_size_input, 1, 1235);
-    // std::vector<float> result_vec(dram_buffer_size_output / sizeof(float));
-    std::vector<uint32_t> src_vec = create_vector_of_uint32(dram_buffer_size_input, core_x * core_y, 1235);
-    std::vector<uint32_t> result_vec(dram_buffer_size_output / sizeof(uint32_t));
-    // uint32_t test_sum = 0;
-    // for (uint32_t i = 0; i < src_vec.size(); ++i) test_sum += src_vec[i];
-    // std::cout << test_sum << std::endl;
-    // std::cout << single_tile_size << std::endl;
+    std::vector<float> src_vec = create_random_vector_of_fp32(dram_buffer_size_input, 1, 1235);
+    std::vector<float> result_vec(dram_buffer_size_output / sizeof(float));
+    // std::vector<uint32_t> src_vec = create_vector_of_uint32(dram_buffer_size_input, core_x * core_y, 1235);
+    // std::vector<uint32_t> result_vec(dram_buffer_size_output / sizeof(uint32_t));
 
     // create dram buffer
     tt_metal::InterleavedBufferConfig dram_config_input {
@@ -196,6 +192,5 @@ int main(int argc, char **argv) {
     // log_info(tt::LogVerif, "Metalium vs Golden -- PCC = {}", pearson);
     // TT_FATAL(pearson > 0.98, "PCC not high enough. Result PCC: {}, Expected PCC: 0.98", pearson);
 
-    Finish(cq);
     CloseDevice(device);
 }
