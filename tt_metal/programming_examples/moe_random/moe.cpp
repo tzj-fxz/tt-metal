@@ -28,6 +28,17 @@ inline std::vector<float> create_random_vector_of_fp32(uint32_t num_bytes, float
     return vec;
 }
 
+inline std::vector<uint32_t> create_vector_of_uint32(uint32_t num_bytes, uint32_t core_size, int seed) {
+    std::vector<uint32_t> vec(num_bytes/sizeof(uint32_t), 0);
+    uint32_t elem_per_core = num_bytes / sizeof(uint32_t) / core_size;
+    for (uint32_t i = 0; i < core_size; ++i) {
+        for (uint32_t j = 0; j < elem_per_core; ++j) {
+            vec[i * elem_per_core + j] = i;
+        }
+    }
+    return vec;
+}
+
 
 int main(int argc, char **argv) {
     TT_FATAL(argc == 5, "Expected 5 arguments (core_x, core_y, M, K) but got {}", argc);
@@ -49,28 +60,38 @@ int main(int argc, char **argv) {
     CoreCoord start_core = {0, 0};
     CoreCoord end_core = {core_x - 1, core_y - 1};
     CoreRange cores(start_core, end_core);
-    // get sharded arguments
     // get data
-    tt::DataFormat data_format = tt::DataFormat::Float32;
+    // tt::DataFormat data_format = tt::DataFormat::Float32;
+    tt::DataFormat data_format = tt::DataFormat::UInt32;
     uint32_t single_tile_elem = tt::constants::TILE_HEIGHT * tt::constants::TILE_WIDTH;
     uint32_t single_tile_size = sizeof(float) * single_tile_elem;
     // DRAM will hold data of all cores
-    uint32_t dram_buffer_size = single_tile_size * M * core_x * core_y;
-    std::vector<float> src_vec = create_random_vector_of_fp32(dram_buffer_size, 1, 1235);
-    std::vector<float> result_vec(dram_buffer_size / sizeof(float));
-
-    // Tilize input data before initialize device config
-    // tilize(src_vec, (M * core_x * core_y), (N));
+    uint32_t dram_buffer_size_input = single_tile_size * M * core_x * core_y;
+    uint32_t dram_buffer_size_output = single_tile_size * M * (core_x * core_y) * (core_x * core_y);
+    // std::vector<float> src_vec = create_random_vector_of_fp32(dram_buffer_size_input, 1, 1235);
+    // std::vector<float> result_vec(dram_buffer_size_output / sizeof(float));
+    std::vector<uint32_t> src_vec = create_vector_of_uint32(dram_buffer_size_input, core_x * core_y, 1235);
+    std::vector<uint32_t> result_vec(dram_buffer_size_output / sizeof(uint32_t));
+    // uint32_t test_sum = 0;
+    // for (uint32_t i = 0; i < src_vec.size(); ++i) test_sum += src_vec[i];
+    // std::cout << test_sum << std::endl;
+    // std::cout << single_tile_size << std::endl;
 
     // create dram buffer
-    tt_metal::InterleavedBufferConfig dram_config {
+    tt_metal::InterleavedBufferConfig dram_config_input {
         .device = device,
-        .size = dram_buffer_size,
+        .size = dram_buffer_size_input,
         .page_size = single_tile_size,
         .buffer_type = tt_metal::BufferType::DRAM
     };
-    std::shared_ptr<tt::tt_metal::Buffer> src_dram_buffer = CreateBuffer(dram_config);
-    std::shared_ptr<tt::tt_metal::Buffer> dst_dram_buffer = CreateBuffer(dram_config);
+    tt_metal::InterleavedBufferConfig dram_config_output {
+        .device = device,
+        .size = dram_buffer_size_output,
+        .page_size = single_tile_size,
+        .buffer_type = tt_metal::BufferType::DRAM
+    };
+    std::shared_ptr<tt::tt_metal::Buffer> src_dram_buffer = CreateBuffer(dram_config_input);
+    std::shared_ptr<tt::tt_metal::Buffer> dst_dram_buffer = CreateBuffer(dram_config_output);
     uint32_t src_dram_addr = src_dram_buffer->address();
     uint32_t dst_dram_addr = dst_dram_buffer->address();
 
@@ -133,6 +154,7 @@ int main(int argc, char **argv) {
     // pay attention to block host until device output data
     EnqueueWriteBuffer(cq, src_dram_buffer, src_vec.data(), false);
     EnqueueProgram(cq, program, false);
+    Finish(cq);
     EnqueueReadBuffer(cq, dst_dram_buffer, result_vec.data(), true);
     tt_metal::detail::DumpDeviceProfileResults(device);
 
@@ -145,30 +167,23 @@ int main(int argc, char **argv) {
         uint32_t curr_core_x = i / core_y;
         uint32_t curr_core_y = i % core_y;
         uint32_t index_base = i * (core_x * core_y);
-        uint32_t data_base = i * M * (core_x * core_y);
+        uint32_t data_base = i * M * single_tile_elem * (core_x * core_y);
         for (uint32_t j = 0; j < (core_x * core_y); ++j) {
             // if (result_index_vec[index_base + j] == 1) {
-            //     for (uint32_t k = 0; k < M; ++k) {
-            //         if (result_vec[data_base + j * M + k] != src_vec[j * M + k]) {
-            //             vectors_match = false;
-            //             std::cout << "Mismatch at core (" << curr_core_x << ", " << curr_core_y << ") receive from core (" << j / core_y << ", " << j % core_y << ")" << std::endl;
-            //         } else {
-            //             std::cout << "Match at core (" << curr_core_x << ", " << curr_core_y << ") receive from core (" << j / core_y << ", " << j % core_y << ")" << std::endl;
-            //         }
-            //     }
+                for (uint32_t k = 0; k < M * single_tile_elem; ++k) {
+                    uint32_t result_index = data_base + j * M * single_tile_elem + k;
+                    uint32_t src_index = j * M * single_tile_elem + k;
+                    if (result_vec[result_index] != src_vec[src_index]) {
+                        vectors_match = false;
+                        std::cout << "Mismatch at core (" << curr_core_x << ", " << curr_core_y << ") receive from core (" << j / core_y << ", " << j % core_y << ")" << std::endl;
+                        std::cout << "Mismatch position: " << k << " " << result_vec[result_index] << " " << src_vec[src_index] << std::endl;
+                        break;
+                    }
+                }
+                std::cout << "Match at core (" << curr_core_x << ", " << curr_core_y << ") receive from core (" << j / core_y << ", " << j % core_y << ")" << std::endl;
             // }
-            for (uint32_t k = 0; k < M * single_tile_elem; ++k) {
-                std::cout << result_vec[data_base + j * M + k] << " ";
-            }
-            std::cout << std::endl;
-            for (uint32_t k = 0; k < M * single_tile_elem; ++k) {
-                std::cout << src_vec[j * M + k] << " ";
-            }
             std::cout << std::endl;
         }
-        // for (uint32_t j = 0; j < core_x * core_y; ++j) {
-        //     std::cout << result_index_vec[index_base + j] << " ";
-        // }
         std::cout << std::endl;
     }
 

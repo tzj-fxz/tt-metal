@@ -73,9 +73,10 @@ void kernel_main() {
         // The remote NoC address is bound to the offset calculated by current core
         uint32_t l1_addr_write_out0_offset = M * single_tile_size * core_offset;
         uint64_t dst_core_addr = get_noc_addr(dst_core_x_physical, dst_core_y_physical, l1_addr_write_out0_start + l1_addr_write_out0_offset);
+        // uint64_t dst_core_addr = get_noc_addr(dst_core_x_physical, dst_core_y_physical, l1_addr_write_out0_start);
         noc_async_write(l1_addr_read_in0_start, dst_core_addr, M * single_tile_size);
+        noc_async_write_barrier();
     }
-    noc_async_write_barrier();
 
     // Note: Use semaphore to wait for other cores sending over, then push back
     {

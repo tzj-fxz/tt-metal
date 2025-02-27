@@ -32,10 +32,10 @@ void kernel_main() {
     };
 
     uint32_t core_offset = curr_core_x_logical * core_y + curr_core_y_logical;
-    uint32_t tile_id = core_offset * M;
+    uint32_t tile_id = core_offset * M * (core_x * core_y);
     {
         DeviceZoneScopedN("writer_write_to_DRAM");
-        for (uint32_t i = 0; i < M; ++i) {
+        for (uint32_t i = 0; i < M * (core_x * core_y); ++i) {
             noc_async_write_tile(tile_id + i, dst, l1_addr_read_out0);
             l1_addr_read_out0 += single_tile_size_bytes;
         }
