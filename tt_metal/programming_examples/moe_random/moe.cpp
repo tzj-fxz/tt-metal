@@ -162,6 +162,7 @@ int main(int argc, char **argv) {
 
     // Compare src and dst vectors
     bool vectors_match = true;
+    uint32_t cnt = 0;
     for (uint32_t i = 0; i < (core_x * core_y); ++i) {
         uint32_t curr_core_x = i / core_y;
         uint32_t curr_core_y = i % core_y;
@@ -180,6 +181,7 @@ int main(int argc, char **argv) {
                     }
                 }
                 std::cout << "Match at core (" << curr_core_x << ", " << curr_core_y << ") receive from core (" << j / core_y << ", " << j % core_y << ")" << std::endl;
+                ++cnt;
             }
             std::cout << std::endl;
         }
@@ -191,6 +193,7 @@ int main(int argc, char **argv) {
     } else {
         std::cout << "MoE Random-K test FAILED - src and dst vectors differ" << std::endl;
     }
+    std::cout <<"Total Receive Count: " << cnt << std::endl;
     // float pearson = check_bfloat16_vector_pcc(golden_vec, result_vec);
     // log_info(tt::LogVerif, "Metalium vs Golden -- PCC = {}", pearson);
     // TT_FATAL(pearson > 0.98, "PCC not high enough. Result PCC: {}, Expected PCC: 0.98", pearson);

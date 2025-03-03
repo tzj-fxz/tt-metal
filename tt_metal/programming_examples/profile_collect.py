@@ -272,10 +272,29 @@ def profile_all2all(df):
     print(df_core)
     df_core.to_csv("output_all2all_noc.csv", index=False)
 
+def profile_moe(df):
+    df_core = df[[" core_x", " core_y"]]
+    df_core = df_core.drop_duplicates().reset_index()
+    df_reader_write_to_noc = df[df["  zone name"] == "reader_random_send"]
+    df_reader_write_to_noc_begin = df_reader_write_to_noc[df_reader_write_to_noc[" zone phase"] == "begin"].reset_index()
+    df_reader_write_to_noc_end = df_reader_write_to_noc[df_reader_write_to_noc[" zone phase"] == "end"].reset_index()
+    df_reader_semaphore = df[df["  zone name"] == "reader_semaphore"]
+    df_reader_semaphore_begin = df_reader_semaphore[df_reader_semaphore[" zone phase"] == "begin"].reset_index()
+    df_reader_semaphore_end = df_reader_semaphore[df_reader_semaphore[" zone phase"] == "end"].reset_index()
+    noc_result = df_reader_write_to_noc_end[" time[cycles since reset]"] - df_reader_write_to_noc_begin[" time[cycles since reset]"]
+    noc_semaphore_result = df_reader_semaphore_end[" time[cycles since reset]"] - df_reader_semaphore_begin[" time[cycles since reset]"]
+    total_result = df_reader_semaphore_end[" time[cycles since reset]"] - df_reader_write_to_noc_begin[" time[cycles since reset]"]
+    df_core["moe-random-send-data-cycles"] = noc_result
+    df_core["moe-random-send-semaphore-cycles"] = noc_semaphore_result
+    df_core["moe-random-send-all-cycles"] = total_result
+    print(df_core)
+    df_core.to_csv("output_moe_random_noc.csv", index=False)
+    print("max data cycle: ", max(noc_result))
+    print("max total cycle: ", max(total_result))
 
 def main():
     parser = argparse.ArgumentParser(description="choose type to profile")
-    parser.add_argument('--mode', '-m', type=str, choices=['noc', 'cannon', 'all2all', 'reusemcast'], default='noc')
+    parser.add_argument('--mode', '-m', type=str, choices=['noc', 'cannon', 'all2all', 'reusemcast', 'moe'], default='moe')
     args = parser.parse_args()
     if args.mode == 'noc':
         profile_noc(df)
@@ -287,6 +306,8 @@ def main():
         profile_all2all(df)
     elif args.mode == 'reusemcast':
         profile_reuse_mcast(df)
+    elif args.mode == 'moe':
+        profile_moe(df)
 
 
 if __name__ == "__main__":

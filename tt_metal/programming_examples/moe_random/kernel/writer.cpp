@@ -18,7 +18,7 @@ void kernel_main() {
 
     // wait from sender cores sending over
     {
-        DeviceZoneScopedN("writer_wait_for_noc");
+        DeviceZoneScopedN("writer_wait_for_random_send");
         cb_wait_front(tt::CB::c_out0, M * core_x * core_y);
     }
     uint32_t l1_addr_read_out0 = get_read_ptr(tt::CB::c_out0);

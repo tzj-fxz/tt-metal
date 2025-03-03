@@ -55,27 +55,29 @@ void kernel_main() {
     uint32_t l1_addr_write_out0_start = l1_addr_write_out0;
 
     bool core_used[128] = {0};
-    for (uint32_t i = 0; i < K; ++i) {
+    {
         DeviceZoneScopedN("reader_random_send");
-        // Get random K core to send tokens, imitating top-k experts
-        uint64_t timestamp = reg_read(RISCV_DEBUG_REG_WALL_CLOCK_L);
-        uint32_t core_index = timestamp % (core_x * core_y);
-        while (core_used[core_index]) {
-            timestamp = reg_read(RISCV_DEBUG_REG_WALL_CLOCK_L);
-            core_index = timestamp % (core_x * core_y);
+        for (uint32_t i = 0; i < K; ++i) {
+            // Get random K core to send tokens, imitating top-k experts
+            uint64_t timestamp = reg_read(RISCV_DEBUG_REG_WALL_CLOCK_L);
+            uint32_t core_index = timestamp % (core_x * core_y);
+            while (core_used[core_index]) {
+                timestamp = reg_read(RISCV_DEBUG_REG_WALL_CLOCK_L);
+                core_index = timestamp % (core_x * core_y);
+            }
+            core_used[core_index] = true;
+            
+            uint32_t dst_core_x = core_index / core_y;
+            uint32_t dst_core_y = core_index % core_y;
+            uint32_t dst_core_x_physical = dst_core_x + 1 + (dst_core_x >= 4);
+            uint32_t dst_core_y_physical = dst_core_y + 1 + (dst_core_y >= 5);
+            // The remote NoC address is bound to the offset calculated by current core
+            uint32_t l1_addr_write_out0_offset = M * single_tile_size * core_offset;
+            uint64_t dst_core_addr = get_noc_addr(dst_core_x_physical, dst_core_y_physical, l1_addr_write_out0_start + l1_addr_write_out0_offset);
+            // uint64_t dst_core_addr = get_noc_addr(dst_core_x_physical, dst_core_y_physical, l1_addr_write_out0_start);
+            noc_async_write(l1_addr_read_in0_start, dst_core_addr, M * single_tile_size);
+            noc_async_write_barrier();
         }
-        core_used[core_index] = true;
-        
-        uint32_t dst_core_x = core_index / core_y;
-        uint32_t dst_core_y = core_index % core_y;
-        uint32_t dst_core_x_physical = dst_core_x + 1 + (dst_core_x >= 4);
-        uint32_t dst_core_y_physical = dst_core_y + 1 + (dst_core_y >= 5);
-        // The remote NoC address is bound to the offset calculated by current core
-        uint32_t l1_addr_write_out0_offset = M * single_tile_size * core_offset;
-        uint64_t dst_core_addr = get_noc_addr(dst_core_x_physical, dst_core_y_physical, l1_addr_write_out0_start + l1_addr_write_out0_offset);
-        // uint64_t dst_core_addr = get_noc_addr(dst_core_x_physical, dst_core_y_physical, l1_addr_write_out0_start);
-        noc_async_write(l1_addr_read_in0_start, dst_core_addr, M * single_tile_size);
-        noc_async_write_barrier();
     }
 
     // Note: Use semaphore to wait for other cores sending over, then push back
